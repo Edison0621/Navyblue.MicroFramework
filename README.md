@@ -46,23 +46,32 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev-up.ps1 -NoBuild
 powershell -ExecutionPolicy Bypass -File .\scripts\dev-down.ps1
 ```
 
-### 3) 本地 localhost 组件模式（兼容开发调试）
+### 3) 运行模式说明（localhost / 生产）
 
-使用 `components/local`（Redis 等走 `localhost`）并通过 Dapr CLI 启动两个服务：
+#### A. localhost 开发模式（单机调试）
+
+适用于：你在一台开发机上调试服务，希望 Redis 等组件直接使用 `localhost`。
+
+- 组件目录：`components/local`（`redisHost=localhost:6379`）
+- 启动命令：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\dev-local.ps1
 ```
 
-停止本地 localhost 模式：
+- 停止命令：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\dev-local-down.ps1
 ```
 
-### 4) 多机域名模式启动脚本（infra/order/product）
+#### B. 生产/多机域名模式（推荐部署）
 
-按节点类型启动 `deploy/*` 下的 compose：
+适用于：订单与商品分机器部署，通过域名访问基础设施（Consul/Redis/OTel）。
+
+- 组件目录：`components/cluster` 与 `deploy/*/components`（`redisHost=redis.infra.local:6379`）
+- 先准备各节点 `.env`（以 `.env.example` 为模板）
+- 启动命令（按节点执行）：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\dev-cluster.ps1 -Node infra
@@ -70,7 +79,13 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev-cluster.ps1 -Node order
 powershell -ExecutionPolicy Bypass -File .\scripts\dev-cluster.ps1 -Node product
 ```
 
-### 5) 访问地址
+- 关键环境变量：
+  - `CONSUL_HOST`（如 `consul.infra.local`）
+  - `REDIS_HOST`（如 `redis.infra.local`）
+  - `OTEL_HOST`（如 `otel.infra.local`）
+  - `INFRA_HOST_IP`（域名映射目标 IP）
+
+### 4) 访问地址
 
 - OrderService: [http://localhost:5001](http://localhost:5001)
 - ProductService: [http://localhost:5002](http://localhost:5002)

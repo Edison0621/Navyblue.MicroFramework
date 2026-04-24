@@ -46,11 +46,51 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev-up.ps1 -NoBuild
 powershell -ExecutionPolicy Bypass -File .\scripts\dev-down.ps1
 ```
 
-### 3) Service URLs
+### 3) Runtime Modes (localhost / production)
+
+#### A. localhost development mode (single machine)
+
+Use this mode when developing on one machine and you want components such as Redis to be accessed via `localhost`.
+
+- Component path: `components/local` (`redisHost=localhost:6379`)
+- Start:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-local.ps1
+```
+
+- Stop:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-local-down.ps1
+```
+
+#### B. production / multi-host domain mode
+
+Use this mode when deploying order/product services across multiple hosts with domain-based infra access.
+
+- Component path: `components/cluster` and `deploy/*/components` (`redisHost=redis.infra.local:6379`)
+- Prepare node-specific `.env` files from `.env.example`
+- Start by node type:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-cluster.ps1 -Node infra
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-cluster.ps1 -Node order
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-cluster.ps1 -Node product
+```
+
+- Key environment variables:
+  - `CONSUL_HOST` (e.g. `consul.infra.local`)
+  - `REDIS_HOST` (e.g. `redis.infra.local`)
+  - `OTEL_HOST` (e.g. `otel.infra.local`)
+  - `INFRA_HOST_IP` (target IP for domain mapping)
+
+### 4) Service URLs
 
 - OrderService: [http://localhost:5001](http://localhost:5001)
 - ProductService: [http://localhost:5002](http://localhost:5002)
 - ProductService Canary: [http://localhost:5003](http://localhost:5003)
+- Ops Portal: [http://localhost:5000](http://localhost:5000)
 - Jaeger UI: [http://localhost:16686](http://localhost:16686)
 
 ## Manual Startup (Without Scripts)

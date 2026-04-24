@@ -1,0 +1,30 @@
+services:
+  consul-server:
+    image: hashicorp/consul:1.19
+    command: "agent -server -ui -bootstrap-expect=1 -client=0.0.0.0"
+    ports:
+      - "${CONSUL_UI_PORT:-8500}:8500"
+      - "8600:8600/udp"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.58
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "${JAEGER_UI_PORT:-16686}:16686"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.102.1
+    command:
+      - "--config=/etc/otelcol/config.yaml"
+    volumes:
+      - ../../observability/otel-collector-config.yaml:/etc/otelcol/config.yaml
+    ports:
+      - "${OTLP_GRPC_PORT:-4317}:4317"
+    depends_on:
+      - jaeger

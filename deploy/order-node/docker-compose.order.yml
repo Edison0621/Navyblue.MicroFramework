@@ -1,0 +1,60 @@
+services:
+  consul-agent:
+    image: hashicorp/consul:1.19
+    command: "agent -retry-join=${CONSUL_SERVER_IP} -client=0.0.0.0"
+    extra_hosts:
+      - "${CONSUL_HOST}:${INFRA_HOST_IP}"
+      - "${REDIS_HOST}:${INFRA_HOST_IP}"
+      - "${OTEL_HOST}:${INFRA_HOST_IP}"
+
+  registrator:
+    image: gliderlabs/registrator:latest
+    command: "-internal consul://consul-agent:8500"
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    depends_on:
+      - consul-agent
+
+  orderservice:
+    image: orderservice:latest
+    build:
+      context: ../..
+      dockerfile: samples/OrderService/Dockerfile
+    ports:
+      - "${ORDER_PORT:-5001}:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - Demo__OtlpEndpoint=${OTLP_ENDPOINT}
+      - Consul__Address=http://${CONSUL_HOST}:8500
+      - Redis__Connection=${REDIS_HOST}:6379
+    labels:
+      - SERVICE_NAME=orderservice
+      - SERVICE_8080_NAME=orderservice
+    extra_hosts:
+      - "${CONSUL_HOST}:${INFRA_HOST_IP}"
+      - "${REDIS_HOST}:${INFRA_HOST_IP}"
+      - "${OTEL_HOST}:${INFRA_HOST_IP}"
+    depends_on:
+      - consul-agent
+
+  orderservice-dapr:
+    image: daprio/daprd:latest
+    command:
+      - ./daprd
+      - --app-id
+      - orderservice
+      - --app-port
+      - "8080"
+      - --dapr-http-port
+      - "3501"
+      - --resources-path
+      - /components
+    network_mode: service:orderservice
+    volumes:
+      - ./components:/components
+    extra_hosts:
+      - "${CONSUL_HOST}:${INFRA_HOST_IP}"
+      - "${REDIS_HOST}:${INFRA_HOST_IP}"
+      - "${OTEL_HOST}:${INFRA_HOST_IP}"
+    depends_on:
+      - orderservice

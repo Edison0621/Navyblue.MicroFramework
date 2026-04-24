@@ -46,7 +46,31 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev-up.ps1 -NoBuild
 powershell -ExecutionPolicy Bypass -File .\scripts\dev-down.ps1
 ```
 
-### 3) 访问地址
+### 3) 本地 localhost 组件模式（兼容开发调试）
+
+使用 `components/local`（Redis 等走 `localhost`）并通过 Dapr CLI 启动两个服务：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-local.ps1
+```
+
+停止本地 localhost 模式：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-local-down.ps1
+```
+
+### 4) 多机域名模式启动脚本（infra/order/product）
+
+按节点类型启动 `deploy/*` 下的 compose：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-cluster.ps1 -Node infra
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-cluster.ps1 -Node order
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-cluster.ps1 -Node product
+```
+
+### 5) 访问地址
 
 - OrderService: [http://localhost:5001](http://localhost:5001)
 - ProductService: [http://localhost:5002](http://localhost:5002)

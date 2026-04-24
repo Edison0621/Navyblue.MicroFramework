@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DaprFx 全局运维平台</title>
+  <style>
+    :root {
+      --bg: #081427;
+      --bg2: #10203b;
+      --card: rgba(255,255,255,0.08);
+      --line: rgba(255,255,255,0.16);
+      --text: #e7efff;
+      --muted: #9eb0d4;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --accent: #60a5fa;
+      --bar-bg: rgba(148, 163, 184, 0.2);
+      --bar-fg: linear-gradient(90deg, #38bdf8, #818cf8);
+      --shadow: 0 10px 30px rgba(0,0,0,0.22);
+    }
+    body.light {
+      --bg: #edf3ff;
+      --bg2: #d9e7ff;
+      --card: rgba(255,255,255,0.82);
+      --line: rgba(148, 163, 184, 0.35);
+      --text: #0f172a;
+      --muted: #475569;
+      --accent: #2563eb;
+      --bar-bg: rgba(59, 130, 246, 0.15);
+      --bar-fg: linear-gradient(90deg, #3b82f6, #2563eb);
+      --shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: "Segoe UI", "PingFang SC", Arial, sans-serif;
+      background: radial-gradient(1200px 700px at 85% -10%, #1d4ed8 0%, transparent 50%), linear-gradient(140deg, var(--bg), var(--bg2));
+      min-height: 100vh;
+    }
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 20px; }
+    .top {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      margin-bottom: 14px;
+    }
+    .title { font-size: 26px; font-weight: 700; letter-spacing: 0.2px; }
+    .meta { color: var(--muted); font-size: 13px; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
+    .kpi, .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      backdrop-filter: blur(8px);
+      box-shadow: var(--shadow);
+    }
+    .kpi { padding: 14px; }
+    .kpi .label { color: var(--muted); font-size: 12px; }
+    .kpi .value { font-size: 28px; font-weight: 800; margin-top: 6px; }
+    .top-actions { display: flex; align-items: center; gap: 8px; }
+    .focus-service-banner {
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: var(--card);
+      box-shadow: var(--shadow);
+      display: none;
+      font-size: 14px;
+    }
+    .focus-service-banner strong { font-size: 17px; margin-left: 6px; }
+    .layout { display: grid; grid-template-columns: 1.3fr 1fr; gap: 12px; }
+    .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .card { padding: 12px; }
+    .card h3 { margin: 2px 0 10px; font-size: 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-bottom: 1px solid rgba(255,255,255,0.09); text-align: left; padding: 9px 6px; vertical-align: top; }
+    body.light th, body.light td { border-bottom: 1px solid rgba(148, 163, 184, 0.22); }
+    .mono { font-family: Consolas, monospace; font-size: 12px; }
+    .pill { display: inline-block; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 700; }
+    .healthy { background: rgba(34,197,94,0.2); color: #86efac; }
+    .degraded { background: rgba(245,158,11,0.2); color: #fcd34d; }
+    .down { background: rgba(239,68,68,0.2); color: #fca5a5; }
+    .services { display: grid; gap: 10px; max-height: 420px; overflow: auto; }
+    .service {
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      padding: 10px;
+      background: rgba(255,255,255,0.03);
+    }
+    body.light .service {
+      border: 1px solid rgba(148, 163, 184, 0.32);
+      background: rgba(255,255,255,0.64);
+    }
+    .service-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .service-name { font-weight: 700; }
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .metric { background: rgba(255,255,255,0.05); border-radius: 8px; padding: 8px; min-height: 70px; }
+    body.light .metric { background: rgba(37, 99, 235, 0.05); }
+    .metric small { color: var(--muted); display: block; }
+    .metric strong { font-size: 20px; margin-top: 4px; display: block; }
+    .bar-wrap { display: grid; gap: 7px; margin-top: 8px; }
+    .bar-item { display: grid; grid-template-columns: 120px 1fr 45px; gap: 8px; align-items: center; font-size: 12px; }
+    .bar { height: 8px; border-radius: 999px; background: var(--bar-bg); overflow: hidden; }
+    .bar i { display: block; height: 100%; background: var(--bar-fg); }
+    .ring-wrap { display: grid; grid-template-columns: 190px 1fr; gap: 14px; align-items: center; }
+    .ring-box { position: relative; width: 190px; height: 190px; margin: 0 auto; }
+    .ring-box canvas { width: 190px; height: 190px; }
+    .ring-center {
+      position: absolute; inset: 45px; border-radius: 50%;
+      display: grid; place-items: center; text-align: center;
+      background: rgba(15, 23, 42, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      font-weight: 700;
+    }
+    body.light .ring-center { background: rgba(255,255,255,0.88); border-color: rgba(148, 163, 184, 0.4); }
+    .ring-list { display: grid; gap: 8px; }
+    .ring-item { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    .dot.ok { background: #22c55e; }
+    .dot.warn { background: #f59e0b; }
+    .dot.bad { background: #ef4444; }
+    .spark canvas { width: 100%; height: 160px; }
+    button {
+      border: 1px solid rgba(255,255,255,0.25);
+      background: rgba(37,99,235,0.42);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 7px 12px;
+      cursor: pointer;
+    }
+    .brand-input { width: 110px; height: 32px; border: 1px solid var(--line); border-radius: 8px; background: transparent; }
+    body.wall-mode .top-actions { display: none; }
+    body.wall-mode .top { margin-bottom: 10px; }
+    body.wall-mode .title { font-size: 34px; }
+    body.wall-mode .meta { font-size: 15px; }
+    body.wall-mode .kpi .value { font-size: 40px; }
+    body.wall-mode .kpi .label { font-size: 14px; }
+    body.wall-mode .card h3 { font-size: 20px; }
+    body.wall-mode .focus-service-banner { display: block; }
+    body.wall-mode .service { opacity: 0.45; transform: scale(0.98); transition: all 260ms ease; }
+    body.wall-mode .service.highlight { opacity: 1; transform: scale(1.01); border-color: var(--accent); box-shadow: 0 0 0 2px rgba(59,130,246,0.25); }
+    body.wall-mode table { font-size: 15px; }
+    body.wall-mode th, body.wall-mode td { padding: 10px 7px; }
+    body.wall-mode .metrics { grid-template-columns: repeat(2, 1fr); }
+    @media (max-width: 1100px) {
+      .kpi-grid, .charts, .layout, .metrics { grid-template-columns: 1fr; }
+      .ring-wrap { grid-template-columns: 1fr; }
+      .top { align-items: start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <div class="title">DaprFx 全局运维平台</div>
+        <div class="meta">聚合所有服务运行指标与健康状态</div>
+      </div>
+      <div class="top-actions">
+        <div class="meta">最近刷新：<span id="generatedAt">--</span></div>
+        <button onclick="refresh()">刷新</button>
+        <button onclick="toggleTheme()">主题切换</button>
+        <button onclick="toggleWallMode()">大屏模式</button>
+        <input class="brand-input" id="brandColor" type="color" value="#60a5fa" title="品牌主色" onchange="setBrandColor(this.value)">
+      </div>
+    </div>
+
+    <section class="kpi-grid">
+      <div class="kpi"><div class="label">服务总数</div><div id="svcTotal" class="value">0</div></div>
+      <div class="kpi"><div class="label">健康服务</div><div id="svcHealthy" class="value">0</div></div>
+      <div class="kpi"><div class="label">平均延迟</div><div id="avgLatency" class="value">0 ms</div></div>
+      <div class="kpi"><div class="label">总死信数</div><div id="deadTotal" class="value">0</div></div>
+    </section>
+
+    <section class="charts">
+      <article class="card">
+        <h3>服务健康雷达</h3>
+        <div class="ring-wrap">
+          <div class="ring-box">
+            <canvas id="healthRing" width="190" height="190"></canvas>
+            <div class="ring-center"><span id="healthRate">0%</span><small class="meta">Healthy</small></div>
+          </div>
+          <div class="ring-list">
+            <div class="ring-item"><span><i class="dot ok"></i>Healthy</span><strong id="healthyCount">0</strong></div>
+            <div class="ring-item"><span><i class="dot warn"></i>Degraded</span><strong id="degradedCount">0</strong></div>
+            <div class="ring-item"><span><i class="dot bad"></i>Down</span><strong id="downCount">0</strong></div>
+          </div>
+        </div>
+      </article>
+      <article class="card spark">
+        <h3>实时趋势（CPU / 延迟）</h3>
+        <canvas id="trendChart" width="560" height="160"></canvas>
+      </article>
+    </section>
+
+    <section class="layout">
+      <article class="card">
+        <h3>服务状态矩阵</h3>
+        <table>
+          <thead><tr><th>服务</th><th>状态</th><th>延迟</th><th>CPU</th><th>内存</th><th>死信</th></tr></thead>
+          <tbody id="statusBody"></tbody>
+        </table>
+      </article>
+      <article class="card">
+        <h3>服务详情</h3>
+        <div class="focus-service-banner">当前轮播聚焦服务：<strong id="focusServiceName">--</strong></div>
+        <div id="serviceCards" class="services"></div>
+      </article>
+    </section>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const fmt = (v) => v ? new Date(v).toLocaleString() : "-";
+    const cpuHistory = [];
+    const latencyHistory = [];
+    let wallMode = false;
+    let rotateIndex = -1;
+    let lastServices = [];
+
+    function statusClass(status) {
+      if (status === "healthy") return "healthy";
+      if (status === "degraded") return "degraded";
+      return "down";
+    }
+
+    function setBrandColor(color) {
+      document.documentElement.style.setProperty("--accent", color);
+      document.documentElement.style.setProperty("--bar-fg", `linear-gradient(90deg, ${color}, #818cf8)`);
+      localStorage.setItem("ops-brand-color", color);
+    }
+
+    function toggleTheme() {
+      document.body.classList.toggle("light");
+      localStorage.setItem("ops-theme", document.body.classList.contains("light") ? "light" : "dark");
+    }
+
+    function toggleWallMode() {
+      wallMode = !wallMode;
+      document.body.classList.toggle("wall-mode", wallMode);
+      localStorage.setItem("ops-wall-mode", wallMode ? "1" : "0");
+      if (!wallMode) {
+        rotateIndex = -1;
+        $("focusServiceName").textContent = "--";
+        [...document.querySelectorAll(".service")].forEach(el => el.classList.remove("highlight"));
+      } else {
+        rotateServiceFocus();
+      }
+    }
+
+    function rotateServiceFocus() {
+      if (!wallMode || lastServices.length === 0) return;
+      rotateIndex = (rotateIndex + 1) % lastServices.length;
+      const current = lastServices[rotateIndex];
+      $("focusServiceName").textContent = `${current.name} (${current.status})`;
+      [...document.querySelectorAll(".service")].forEach((el, idx) => {
+        el.classList.toggle("highlight", idx === rotateIndex);
+      });
+    }
+
+    function drawHealthRing(healthy, degraded, down) {
+      const canvas = $("healthRing");
+      const ctx = canvas.getContext("2d");
+      const total = Math.max(healthy + degraded + down, 1);
+      const center = 95;
+      const radius = 74;
+      const lineWidth = 20;
+      const parts = [
+        { value: healthy, color: "#22c55e" },
+        { value: degraded, color: "#f59e0b" },
+        { value: down, color: "#ef4444" }
+      ];
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.lineWidth = lineWidth;
+      ctx.lineCap = "round";
+
+      let start = -Math.PI / 2;
+      parts.forEach(part => {
+        const arc = (part.value / total) * Math.PI * 2;
+        if (arc <= 0) return;
+        ctx.beginPath();
+        ctx.strokeStyle = part.color;
+        ctx.arc(center, center, radius, start, start + arc);
+        ctx.stroke();
+        start += arc;
+      });
+
+      const rate = Math.round((healthy / total) * 100);
+      $("healthRate").textContent = `${rate}%`;
+      $("healthyCount").textContent = healthy;
+      $("degradedCount").textContent = degraded;
+      $("downCount").textContent = down;
+    }
+
+    function drawTrend() {
+      const canvas = $("trendChart");
+      const ctx = canvas.getContext("2d");
+      const width = canvas.width;
+      const height = canvas.height;
+      ctx.clearRect(0, 0, width, height);
+
+      ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--line");
+      ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
+
+      if (cpuHistory.length < 2) return;
+      const cpuMax = Math.max(10, ...cpuHistory);
+      const latencyMax = Math.max(50, ...latencyHistory);
+      drawLine(cpuHistory, cpuMax, "#38bdf8");
+      drawLine(latencyHistory, latencyMax, "#a78bfa");
+
+      ctx.fillStyle = "#38bdf8";
+      ctx.fillRect(10, 10, 10, 3);
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--text");
+      ctx.fillText("CPU", 24, 13);
+      ctx.fillStyle = "#a78bfa";
+      ctx.fillRect(70, 10, 10, 3);
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--text");
+      ctx.fillText("Latency", 84, 13);
+
+      function drawLine(series, max, color) {
+        const step = (width - 24) / (series.length - 1);
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        series.forEach((v, idx) => {
+          const x = 12 + idx * step;
+          const y = height - 12 - (v / max) * (height - 28);
+          if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      }
+    }
+
+    async function refresh() {
+      const res = await fetch("/api/overview");
+      const data = await res.json();
+      const services = data.services || [];
+      lastServices = services;
+      $('generatedAt').textContent = fmt(data.generatedAt);
+
+      const healthy = services.filter(x => x.status === "healthy").length;
+      const degraded = services.filter(x => x.status === "degraded").length;
+      const down = services.filter(x => x.status === "down").length;
+      const avgLatency = services.length ? (services.reduce((a, x) => a + (x.latencyMs || 0), 0) / services.length) : 0;
+      const avgCpu = services.length
+        ? (services.reduce((a, x) => a + (x.data?.runtime?.cpuPercent || 0), 0) / services.length)
+        : 0;
+      const deadTotal = services.reduce((a, x) => a + (x.data?.outbox?.deadLetterCount || 0), 0);
+
+      cpuHistory.push(avgCpu);
+      latencyHistory.push(avgLatency);
+      while (cpuHistory.length > 40) cpuHistory.shift();
+      while (latencyHistory.length > 40) latencyHistory.shift();
+
+      $('svcTotal').textContent = services.length;
+      $('svcHealthy').textContent = healthy;
+      $('avgLatency').textContent = `${avgLatency.toFixed(1)} ms`;
+      $('deadTotal').textContent = deadTotal;
+      drawHealthRing(healthy, degraded, down);
+      drawTrend();
+
+      $('statusBody').innerHTML = services.map(s => `
+        <tr>
+          <td>${s.name}</td>
+          <td><span class="pill ${statusClass(s.status)}">${s.status}</span></td>
+          <td>${(s.latencyMs || 0).toFixed(1)} ms</td>
+          <td>${s.data?.runtime?.cpuPercent ?? "-"}%</td>
+          <td>${s.data?.runtime?.memoryMb ?? "-"} MB</td>
+          <td>${s.data?.outbox?.deadLetterCount ?? "-"}</td>
+        </tr>
+      `).join("");
+
+      $('serviceCards').innerHTML = services.map(s => {
+        const topics = s.data?.events?.topics || [];
+        const topicTotal = topics.reduce((acc, x) => acc + (x.count || 0), 0) || 1;
+        return `
+          <div class="service">
+            <div class="service-head">
+              <div class="service-name">${s.name}</div>
+              <span class="pill ${statusClass(s.status)}">${s.status}</span>
+            </div>
+            <div class="meta">${s.baseUrl} · ${(s.latencyMs || 0).toFixed(1)} ms</div>
+            <div class="metrics">
+              <div class="metric"><small>CPU</small><strong>${s.data?.runtime?.cpuPercent ?? "-"}%</strong></div>
+              <div class="metric"><small>Memory</small><strong>${s.data?.runtime?.memoryMb ?? "-"} MB</strong></div>
+              <div class="metric"><small>Dead Letters</small><strong>${s.data?.outbox?.deadLetterCount ?? "-"}</strong></div>
+              <div class="metric"><small>Events(1h)</small><strong>${s.data?.events?.lastHour ?? "-"}</strong></div>
+            </div>
+            <div class="bar-wrap">
+              ${topics.map(t => {
+                const pct = Math.round((t.count || 0) / topicTotal * 100);
+                return `<div class="bar-item"><span>${t.topic}</span><div class="bar"><i style="width:${pct}%"></i></div><strong>${pct}%</strong></div>`;
+              }).join("") || `<div class="meta">暂无事件 Topic 数据</div>`}
+            </div>
+            ${s.error ? `<div class="meta" style="color:#fca5a5;margin-top:6px">错误：${s.error}</div>` : ""}
+          </div>
+        `;
+      }).join("");
+
+      if (wallMode) {
+        rotateServiceFocus();
+      }
+    }
+
+    (function bootTheme() {
+      const savedTheme = localStorage.getItem("ops-theme");
+      if (savedTheme === "light") document.body.classList.add("light");
+      const savedColor = localStorage.getItem("ops-brand-color");
+      if (savedColor) {
+        $("brandColor").value = savedColor;
+        setBrandColor(savedColor);
+      }
+      if (localStorage.getItem("ops-wall-mode") === "1") {
+        toggleWallMode();
+      }
+    })();
+
+    refresh();
+    setInterval(refresh, 5000);
+    setInterval(rotateServiceFocus, 4000);
+  </script>
+</body>
+</html>

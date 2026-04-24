@@ -1,0 +1,162 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.58
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.102.1
+    command:
+      - "--config=/etc/otelcol/config.yaml"
+    volumes:
+      - ./observability/otel-collector-config.yaml:/etc/otelcol/config.yaml
+    ports:
+      - "4317:4317"
+    depends_on:
+      - jaeger
+
+  orderservice:
+    image: orderservice:latest
+    build:
+      context: .
+      dockerfile: samples/OrderService/Dockerfile
+    ports:
+      - "5001:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - Demo__OtlpEndpoint=http://otel-collector:4317
+    depends_on:
+      - redis
+      - otel-collector
+
+  orderservice-dapr:
+    image: daprio/daprd:latest
+    command:
+      - ./daprd
+      - --app-id
+      - orderservice
+      - --app-port
+      - "8080"
+      - --dapr-http-port
+      - "3501"
+      - --resources-path
+      - /components
+    network_mode: service:orderservice
+    volumes:
+      - ./components:/components
+    depends_on:
+      - redis
+      - orderservice
+      - otel-collector
+
+  productservice:
+    image: productservice:latest
+    build:
+      context: .
+      dockerfile: samples/ProductService/Dockerfile
+    ports:
+      - "5002:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    depends_on:
+      - redis
+      - otel-collector
+
+  productservice-dapr:
+    image: daprio/daprd:latest
+    command:
+      - ./daprd
+      - --app-id
+      - productservice
+      - --app-port
+      - "8080"
+      - --dapr-http-port
+      - "3502"
+      - --resources-path
+      - /components
+    network_mode: service:productservice
+    volumes:
+      - ./components:/components
+    depends_on:
+      - redis
+      - productservice
+      - otel-collector
+
+  productservice-canary:
+    image: productservice-canary:latest
+    build:
+      context: .
+      dockerfile: samples/ProductService/Dockerfile
+    ports:
+      - "5003:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    depends_on:
+      - redis
+      - otel-collector
+
+  productservice-canary-dapr:
+    image: daprio/daprd:latest
+    command:
+      - ./daprd
+      - --app-id
+      - productservice-canary
+      - --app-port
+      - "8080"
+      - --dapr-http-port
+      - "3503"
+      - --resources-path
+      - /components
+    network_mode: service:productservice-canary
+    volumes:
+      - ./components:/components
+    depends_on:
+      - redis
+      - productservice-canary
+      - otel-collector
+
+  opsportal:
+    image: opsportal:latest
+    build:
+      context: .
+      dockerfile: samples/OpsPortal/Dockerfile
+    ports:
+      - "5000:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - OpsPortal__Services__0__Name=OrderService
+      - OpsPortal__Services__0__BaseUrl=http://orderservice:8080
+      - OpsPortal__Services__1__Name=ProductService
+      - OpsPortal__Services__1__BaseUrl=http://productservice:8080
+      - OpsPortal__Services__2__Name=ProductService Canary
+      - OpsPortal__Services__2__BaseUrl=http://productservice-canary:8080
+    depends_on:
+      - orderservice
+      - productservice
+      - productservice-canary
+
+  opsportal-dapr:
+    image: daprio/daprd:latest
+    command:
+      - ./daprd
+      - --app-id
+      - opsportal
+      - --app-port
+      - "8080"
+      - --dapr-http-port
+      - "3500"
+      - --resources-path
+      - /components
+    network_mode: service:opsportal
+    volumes:
+      - ./components:/components
+    depends_on:
+      - redis
+      - opsportal

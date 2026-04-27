@@ -15,6 +15,10 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
+app.MapGet("/", () => Results.Ok(new { service = "ProductService", status = "ok" }));
+app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
+app.MapGet("/health/ready", () => Results.Ok(new { status = "ready" }));
+
 app.UseAuthorization();
 
 app.MapControllers();

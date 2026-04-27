@@ -30,11 +30,12 @@ app.MapGet("/api/overview", async (IHttpClientFactory httpClientFactory, IConfig
         var startedAt = DateTimeOffset.UtcNow;
         try
         {
-            var url = $"{service.BaseUrl.TrimEnd('/')}/ops/dashboard/overview";
-            var response = await client.GetAsync(url, cancellationToken);
+            var baseUrl = service.BaseUrl.TrimEnd('/');
+            var liveUrl = $"{baseUrl}/health/live";
+            var liveResponse = await client.GetAsync(liveUrl, cancellationToken);
             var latencyMs = (DateTimeOffset.UtcNow - startedAt).TotalMilliseconds;
 
-            if (!response.IsSuccessStatusCode)
+            if (!liveResponse.IsSuccessStatusCode)
             {
                 results.Add(new
                 {
@@ -42,12 +43,26 @@ app.MapGet("/api/overview", async (IHttpClientFactory httpClientFactory, IConfig
                     service.BaseUrl,
                     Status = "degraded",
                     LatencyMs = Math.Round(latencyMs, 2),
-                    Error = $"{(int)response.StatusCode} {response.ReasonPhrase}"
+                    Error = $"{(int)liveResponse.StatusCode} {liveResponse.ReasonPhrase}"
                 });
                 continue;
             }
 
-            var payload = await response.Content.ReadFromJsonAsync<Dictionary<string, object?>>(cancellationToken: cancellationToken);
+            Dictionary<string, object?>? payload = null;
+            try
+            {
+                var overviewUrl = $"{baseUrl}/ops/dashboard/overview";
+                var overviewResponse = await client.GetAsync(overviewUrl, cancellationToken);
+                if (overviewResponse.IsSuccessStatusCode)
+                {
+                    payload = await overviewResponse.Content.ReadFromJsonAsync<Dictionary<string, object?>>(cancellationToken: cancellationToken);
+                }
+            }
+            catch
+            {
+                // Keep service healthy when liveness is OK; dashboard metrics are optional.
+            }
+
             results.Add(new
             {
                 service.Name,

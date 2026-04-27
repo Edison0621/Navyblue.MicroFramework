@@ -68,3 +68,5 @@ appsettings.Development.json
 secrets.json
 /frontend/platform-admin/node_modules
 /frontend/platform-admin/dist
+/frontend/merchant-admin/node_modules
+/frontend/merchant-admin/dist

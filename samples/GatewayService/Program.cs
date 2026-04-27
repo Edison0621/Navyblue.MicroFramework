@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Diagnostics;
 using System.Text;
 using System.Threading.RateLimiting;
 using Dapr.Client;
@@ -89,6 +90,8 @@ builder.Services.AddCors(options =>
                 "http://127.0.0.1:5173",
                 "http://localhost:5174",
                 "http://127.0.0.1:5174",
+                "http://localhost:5175",
+                "http://127.0.0.1:5175",
                 "http://localhost:5013",
                 "http://127.0.0.1:5013")
             .AllowAnyHeader()
@@ -150,6 +153,7 @@ app.Use(async (context, next) =>
 app.MapGet("/", () => Results.Ok(new { service = "GatewayService", status = "ok" }));
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
 app.MapGet("/health/ready", () => Results.Ok(new { status = "ready" }));
+app.MapGet("/ops/dashboard/overview", () => Results.Ok(RuntimeSnapshot.Build()));
 
 app.UseCors("FrontendClients");
 
@@ -1410,4 +1414,29 @@ internal sealed class JwtOptions
     public string Issuer { get; init; } = "DaprFx.AuthService";
     public string Audience { get; init; } = "DaprFx.Services";
     public string SigningKey { get; init; } = "DaprFx.Dev.Secret.Key.ChangeMe";
+}
+
+internal static class RuntimeSnapshot
+{
+    private static readonly DateTimeOffset StartedAt = DateTimeOffset.UtcNow;
+
+    public static object Build()
+    {
+        using var process = Process.GetCurrentProcess();
+        var uptimeMs = Math.Max((DateTimeOffset.UtcNow - StartedAt).TotalMilliseconds, 1d);
+        var cpuPercent = process.TotalProcessorTime.TotalMilliseconds / (Environment.ProcessorCount * uptimeMs) * 100d;
+        return new
+        {
+            generatedAt = DateTimeOffset.UtcNow,
+            runtime = new
+            {
+                cpuPercent = Math.Round(cpuPercent, 2),
+                memoryMb = Math.Round(process.WorkingSet64 / 1024d / 1024d, 2),
+                managedMemoryMb = Math.Round(GC.GetTotalMemory(false) / 1024d / 1024d, 2),
+                threadCount = process.Threads.Count,
+                handleCount = process.HandleCount,
+                uptimeMinutes = Math.Round((DateTimeOffset.UtcNow - StartedAt).TotalMinutes, 1)
+            }
+        };
+    }
 }

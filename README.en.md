@@ -329,3 +329,7 @@ The demo setup uses Redis by default.
 - Health checks: `/health/live`, `/health/ready`
 - Dead-letter query (example): `GET /ops/outbox/deadletters?take=100`
 - Dead-letter replay (example): `POST /ops/outbox/deadletters/replay-all?dryRun=true`
+
+## Contract Checklist
+
+- Minimal contract regression checklist: `CONTRACT_TEST_CHECKLIST.md`

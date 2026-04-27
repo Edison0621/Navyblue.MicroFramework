@@ -552,3 +552,7 @@ Pagination conventions for list endpoints:
 Exception (service-to-service): `POST /api/promotions/validate` returns a root JSON object matching `PromotionValidationResult` (fields `valid`, `reason`, `code`, `discountType`, `discountValue`, `orderAmount`, `discountAmount`, `finalAmount`) so Dapr `Invoke` clients (for example OrderService) can deserialize the body directly without an `ApiResponse` wrapper.
 
 Gateway `GET` forwards: incoming query strings are appended to the upstream URL for all explicit `ForwardGet` routes (users, orders, catalog, inventory, promotions, notifications, jobs).
+
+## 契约测试清单
+
+- 最小契约测试清单见：`CONTRACT_TEST_CHECKLIST.md`

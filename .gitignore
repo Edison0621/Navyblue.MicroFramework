@@ -66,3 +66,5 @@ Desktop.ini
 .env.*
 appsettings.Development.json
 secrets.json
+/frontend/platform-admin/node_modules
+/frontend/platform-admin/dist

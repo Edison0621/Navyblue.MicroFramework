@@ -241,6 +241,21 @@ app.MapGet("/api/gw/users/{id:guid}", async (HttpContext httpContext, Guid id, I
     return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, $"http://userservice:8080/api/users/{id}"), cancellationToken);
 }).RequireAuthorization();
 
+app.MapGet("/api/gw/users", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, "http://userservice:8080/api/users"), cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapGet("/api/gw/users/me", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/me", cancellationToken);
+}).RequireAuthorization();
+
+app.MapPut("/api/gw/users/{id:guid}", async (HttpContext httpContext, Guid id, ForwardUpdateUserRequest request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPutAsync(httpContext, httpClientFactory, $"http://userservice:8080/api/users/{id}", request, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
 app.MapPatch("/api/gw/users/{id:guid}/roles", async (HttpContext httpContext, Guid id, ForwardRolesRequest request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
 {
     return await GatewayForwarder.ForwardPatchAsync(httpContext, httpClientFactory, $"http://userservice:8080/api/users/{id}/roles", request, cancellationToken);
@@ -250,6 +265,126 @@ app.MapPatch("/api/gw/users/{id:guid}/status", async (HttpContext httpContext, G
 {
     return await GatewayForwarder.ForwardPatchAsync(httpContext, httpClientFactory, $"http://userservice:8080/api/users/{id}/status", request, cancellationToken);
 }).RequireAuthorization("AdminOnly");
+
+app.MapPatch("/api/gw/users/{id:guid}/tags", async (HttpContext httpContext, Guid id, ForwardUserTagsRequest request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPatchAsync(httpContext, httpClientFactory, $"http://userservice:8080/api/users/{id}/tags", request, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapPatch("/api/gw/users/{id:guid}/blacklist", async (HttpContext httpContext, Guid id, ForwardUserBlacklistRequest request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPatchAsync(httpContext, httpClientFactory, $"http://userservice:8080/api/users/{id}/blacklist", request, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapPatch("/api/gw/users/{id:guid}/level", async (HttpContext httpContext, Guid id, ForwardUserLevelRequest request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPatchAsync(httpContext, httpClientFactory, $"http://userservice:8080/api/users/{id}/level", request, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapPatch("/api/gw/users/batch/level", async (HttpContext httpContext, object request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPatchAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/batch/level", request, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapPatch("/api/gw/users/batch/tags", async (HttpContext httpContext, object request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPatchAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/batch/tags", request, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapPatch("/api/gw/users/batch/blacklist", async (HttpContext httpContext, object request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPatchAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/batch/blacklist", request, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapPost("/api/gw/users/me/close-request", async (HttpContext httpContext, ForwardCloseRequest request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/me/close-request", request, cancellationToken);
+}).RequireAuthorization();
+
+app.MapPost("/api/gw/users/{id:guid}/close-review", async (HttpContext httpContext, Guid id, ForwardCloseReviewRequest request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, $"http://userservice:8080/api/users/{id}/close-review", request, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapGet("/api/gw/users/me/profile", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/me/profile", cancellationToken);
+}).RequireAuthorization();
+
+app.MapPut("/api/gw/users/me/profile", async (HttpContext httpContext, object request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPutAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/me/profile", request, cancellationToken);
+}).RequireAuthorization();
+
+app.MapGet("/api/gw/users/me/loyalty", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/me/loyalty", cancellationToken);
+}).RequireAuthorization();
+
+app.MapPut("/api/gw/users/me/loyalty", async (HttpContext httpContext, object request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPutAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/me/loyalty", request, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapGet("/api/gw/users/me/coupons", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/me/coupons", cancellationToken);
+}).RequireAuthorization();
+
+app.MapPost("/api/gw/users/me/coupons", async (HttpContext httpContext, object request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/me/coupons", request, cancellationToken);
+}).RequireAuthorization();
+
+app.MapGet("/api/gw/users/me/invoices", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/me/invoices", cancellationToken);
+}).RequireAuthorization();
+
+app.MapPost("/api/gw/users/me/invoices", async (HttpContext httpContext, object request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/me/invoices", request, cancellationToken);
+}).RequireAuthorization();
+
+app.MapGet("/api/gw/users/me/favorites", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/me/favorites", cancellationToken);
+}).RequireAuthorization();
+
+app.MapPost("/api/gw/users/me/favorites", async (HttpContext httpContext, object request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/me/favorites", request, cancellationToken);
+}).RequireAuthorization();
+
+app.MapGet("/api/gw/users/me/footprints", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/me/footprints", cancellationToken);
+}).RequireAuthorization();
+
+app.MapPost("/api/gw/users/me/footprints", async (HttpContext httpContext, object request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/me/footprints", request, cancellationToken);
+}).RequireAuthorization();
+
+app.MapGet("/api/gw/users/me/searches", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/me/searches", cancellationToken);
+}).RequireAuthorization();
+
+app.MapPost("/api/gw/users/me/searches", async (HttpContext httpContext, object request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/me/searches", request, cancellationToken);
+}).RequireAuthorization();
+
+app.MapGet("/api/gw/users/me/reviews", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/me/reviews", cancellationToken);
+}).RequireAuthorization();
+
+app.MapPost("/api/gw/users/me/reviews", async (HttpContext httpContext, object request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, "http://userservice:8080/api/users/me/reviews", request, cancellationToken);
+}).RequireAuthorization();
 
 app.MapGet("/api/gw/users/me/addresses", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
 {
@@ -571,8 +706,14 @@ app.Run();
 
 internal sealed record ForwardLoginRequest(string Account, string Password);
 internal sealed record ForwardRegisterRequest(string Username, string Email, string Password);
+internal sealed record ForwardUpdateUserRequest(string Username, string Email, string? AvatarUrl);
 internal sealed record ForwardRolesRequest(string[] Roles);
 internal sealed record ForwardStatusRequest(string Status);
+internal sealed record ForwardUserTagsRequest(string[] Tags, string? Note = null);
+internal sealed record ForwardUserBlacklistRequest(bool IsBlacklisted, string? Reason = null, DateTimeOffset? ExpiresAt = null);
+internal sealed record ForwardUserLevelRequest(string Level, int? Points = null, int? GrowthValue = null, string? Note = null);
+internal sealed record ForwardCloseRequest(string Reason);
+internal sealed record ForwardCloseReviewRequest(string Decision, string? Note = null);
 internal sealed record ForwardCatalogUpsertRequest(string Name, decimal Price, bool IsActive, string? ShopId, string? CategoryId, IReadOnlyList<ForwardCatalogSkuRequest>? Skus);
 internal sealed record ForwardCatalogSkuRequest(string SkuId, string Name, decimal? Price, bool IsActive);
 internal sealed record ForwardCatalogSubmitRequest(string? Note);

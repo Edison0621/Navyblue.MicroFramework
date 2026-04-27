@@ -38,6 +38,20 @@ public static class UserStatusGuard
                 new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.UserDisabled, "User account is not active.", new { resp.Data.Status })));
         }
 
+        if (resp.Data.IsBlacklisted)
+        {
+            return controller.StatusCode(
+                StatusCodes.Status403Forbidden,
+                new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.UserDisabled, "User is blacklisted.")));
+        }
+
+        if (string.Equals(resp.Data.CloseRequestStatus, "pending", StringComparison.OrdinalIgnoreCase))
+        {
+            return controller.StatusCode(
+                StatusCodes.Status403Forbidden,
+                new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.UserDisabled, "User account is pending closure review.")));
+        }
+
         return null;
     }
 }

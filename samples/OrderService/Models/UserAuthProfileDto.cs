@@ -5,4 +5,6 @@ public sealed record UserAuthProfileDto(
     string Username,
     string Email,
     string[] Roles,
-    string Status);
+    string Status,
+    bool IsBlacklisted,
+    string? CloseRequestStatus);

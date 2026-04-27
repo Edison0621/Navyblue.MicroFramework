@@ -32,6 +32,11 @@ public sealed class OrderCancellationController(
             return NotFound(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.NotFound, "Order not found.")));
         }
 
+        if (!OrderAccess.CanAccessOrder(User, order))
+        {
+            return OrderAccess.Forbidden();
+        }
+
         if (order.Status == OrderStatus.Cancelled)
         {
             return Ok(new ApiResponse<Order>(true, order, null));

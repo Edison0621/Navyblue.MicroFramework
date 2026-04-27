@@ -99,6 +99,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev-cluster.ps1 -Node product
 - NotificationService: [http://localhost:5010](http://localhost:5010)
 - JobService: [http://localhost:5011](http://localhost:5011)
 - PromotionService: [http://localhost:5012](http://localhost:5012)
+- Platform Buyer Admin: [http://localhost:5013](http://localhost:5013)
 - Ops Portal: [http://localhost:5000](http://localhost:5000)
 - Jaeger UI: [http://localhost:16686](http://localhost:16686)
 
@@ -556,3 +557,32 @@ Gateway `GET` forwards: incoming query strings are appended to the upstream URL 
 ## 契约测试清单
 
 - 最小契约测试清单见：`CONTRACT_TEST_CHECKLIST.md`
+
+## 前端（买家端全量计划基线）
+
+仓库已新增买家端前端应用：
+
+- `frontend/buyer-web`：买家端全量计划基线（React + Vite + TypeScript）
+- `frontend/merchant-admin`：商家端目录骨架
+- `frontend/platform-admin`：平台买家管理后台（用户列表/标签/黑名单/等级/注销审批）
+
+本地启动买家端：
+
+```bash
+cd frontend/buyer-web
+npm install
+npm run dev
+```
+
+可选环境变量（默认值如下）：
+
+```bash
+VITE_GATEWAY_BASE_URL=http://localhost:5006
+```
+
+前端补充文档：
+
+- `frontend/buyer-web/docs/api-gap-checklist.md`
+- `frontend/buyer-web/docs/release-checklist.md`
+- `docs/buyer-management-contract.md`
+- `docs/prd-closure-status.md`

@@ -1,0 +1,102 @@
+@gateway = http://localhost:5006
+@token = REPLACE_WITH_ADMIN_BEARER_TOKEN
+@buyerToken = REPLACE_WITH_BUYER_BEARER_TOKEN
+@userId = 11111111-1111-1111-1111-111111111111
+
+### List buyers (admin)
+GET {{gateway}}/api/gw/users?page=1&pageSize=20
+Authorization: Bearer {{token}}
+
+### Search buyer by keyword (admin)
+GET {{gateway}}/api/gw/users?page=1&pageSize=20&q=demo
+Authorization: Bearer {{token}}
+
+### Update buyer tags (admin)
+PATCH {{gateway}}/api/gw/users/{{userId}}/tags
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "tags": ["vip", "risk-watch"],
+  "note": "manual update from buyer admin"
+}
+
+### Update buyer blacklist (admin)
+PATCH {{gateway}}/api/gw/users/{{userId}}/blacklist
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "isBlacklisted": true,
+  "reason": "fraud-risk",
+  "expiresAt": "2027-01-01T00:00:00Z"
+}
+
+### Update buyer level (admin)
+PATCH {{gateway}}/api/gw/users/{{userId}}/level
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "level": "vip",
+  "points": 1200,
+  "growthValue": 3000,
+  "note": "campaign adjustment"
+}
+
+### Review close request (approve)
+POST {{gateway}}/api/gw/users/{{userId}}/close-review
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "decision": "approve",
+  "note": "approved by ops"
+}
+
+### Batch update level (admin)
+PATCH {{gateway}}/api/gw/users/batch/level
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "userIds": ["{{userId}}"],
+  "level": "vip",
+  "points": 1800,
+  "growthValue": 4200,
+  "note": "batch campaign update"
+}
+
+### Batch update tags (admin)
+PATCH {{gateway}}/api/gw/users/batch/tags
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "userIds": ["{{userId}}"],
+  "tags": ["vip", "campaign-2026"],
+  "note": "batch ops tag"
+}
+
+### Batch blacklist (admin)
+PATCH {{gateway}}/api/gw/users/batch/blacklist
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "userIds": ["{{userId}}"],
+  "isBlacklisted": false,
+  "reason": "manual unfreeze"
+}
+
+### Buyer profile
+GET {{gateway}}/api/gw/users/me/profile
+Authorization: Bearer {{buyerToken}}
+
+### Buyer invoices
+GET {{gateway}}/api/gw/users/me/invoices
+Authorization: Bearer {{buyerToken}}
+
+### Buyer loyalty
+GET {{gateway}}/api/gw/users/me/loyalty
+Authorization: Bearer {{buyerToken}}

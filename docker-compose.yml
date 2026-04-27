@@ -510,3 +510,13 @@ services:
     depends_on:
       - redis
       - opsportal
+
+  platform-admin:
+    image: platform-admin:latest
+    build:
+      context: ./frontend/platform-admin
+      dockerfile: Dockerfile
+    ports:
+      - "5013:80"
+    depends_on:
+      - gatewayservice

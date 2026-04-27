@@ -322,6 +322,11 @@ app.MapPost("/api/gw/auth/register", async (HttpContext httpContext, ForwardRegi
     return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, "http://authservice:8080/api/auth/register", request, cancellationToken);
 });
 
+app.MapGet("/api/gw/auth/me", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, "http://authservice:8080/api/auth/me", cancellationToken);
+}).RequireAuthorization();
+
 app.MapGet("/api/gw/users/{id:guid}", async (HttpContext httpContext, Guid id, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
 {
     return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, $"http://userservice:8080/api/users/{id}"), cancellationToken);

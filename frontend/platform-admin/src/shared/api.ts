@@ -1,5 +1,5 @@
 import { clearToken, getToken } from './auth'
-import type { ApiEnvelope, BuyerUser, CatalogCategoryNode, CatalogItem, PagedResult, SessionUser } from '../types'
+import type { ApiEnvelope, BuyerUser, CatalogCategoryNode, CatalogItem, LoginResult, PagedResult, SessionUser } from '../types'
 
 const base = import.meta.env.VITE_GATEWAY_BASE_URL ?? 'http://localhost:5006'
 
@@ -13,7 +13,21 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
       ...(init?.headers ?? {}),
     },
   })
-  const payload = (await res.json()) as ApiEnvelope<T>
+  const raw = await res.text()
+  let payload: ApiEnvelope<T> | null = null
+  if (raw) {
+    try {
+      payload = JSON.parse(raw) as ApiEnvelope<T>
+    } catch {
+      payload = null
+    }
+  }
+
+  if (!payload) {
+    if (res.status === 401) clearToken()
+    throw new Error(raw || `request failed ${res.status}`)
+  }
+
   if (!res.ok || !payload.success || payload.data === null) {
     if (res.status === 401) clearToken()
     throw new Error(payload.error?.message ?? `request failed ${res.status}`)
@@ -22,6 +36,8 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  login: (account: string, password: string) =>
+    call<LoginResult>('/api/gw/auth/login', { method: 'POST', body: JSON.stringify({ account, password }) }),
   me: () => call<SessionUser>('/api/gw/auth/me'),
   listUsers: (query: URLSearchParams) => call<PagedResult<BuyerUser>>(`/api/gw/users?${query.toString()}`),
   patchTags: (id: string, tags: string[], note?: string) =>

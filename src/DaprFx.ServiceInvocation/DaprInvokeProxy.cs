@@ -7,7 +7,7 @@ using DaprFx.Core;
 
 namespace DaprFx.ServiceInvocation;
 
-internal sealed class DaprInvokeProxy : DispatchProxy
+internal class DaprInvokeProxy : DispatchProxy
 {
     private static readonly ConcurrentDictionary<string, CircuitBreakerState> CircuitStates = new();
     private DaprClient? _daprClient;

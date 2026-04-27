@@ -1,7 +1,11 @@
-const TOKEN_KEY = 'buyer_web_access_token'
+const TOKEN_KEY = 'platform_admin_access_token'
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY)
+}
+
+export function setToken(token: string) {
+  localStorage.setItem(TOKEN_KEY, token)
 }
 
 export function clearToken() {

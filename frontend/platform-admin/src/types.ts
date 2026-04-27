@@ -17,6 +17,13 @@ export interface ApiEnvelope<T> {
   error: ApiErrorPayload | null
 }
 
+export interface LoginResult {
+  accessToken: string
+  refreshToken?: string
+  tokenType: string
+  expiresIn: number
+}
+
 export interface PagedResult<T> {
   items: T[]
   page: number

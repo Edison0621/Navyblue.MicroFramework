@@ -308,6 +308,11 @@ app.MapPost("/api/gw/orders/{orderId}/sub-orders/{subOrderId}/deliver", async (H
     return await GatewayForwarder.ForwardPostAsync<object?>(httpContext, httpClientFactory, $"http://orderservice:8080/api/orders/{Uri.EscapeDataString(orderId)}/sub-orders/{Uri.EscapeDataString(subOrderId)}/deliver", null, cancellationToken);
 }).RequireAuthorization();
 
+app.MapGet("/api/gw/orders/{orderId}/sub-orders/{subOrderId}/tracking", async (HttpContext httpContext, string orderId, string subOrderId, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, $"http://orderservice:8080/api/orders/{Uri.EscapeDataString(orderId)}/sub-orders/{Uri.EscapeDataString(subOrderId)}/tracking"), cancellationToken);
+}).RequireAuthorization();
+
 app.MapPost("/api/gw/orders/{orderId}/cancel", async (HttpContext httpContext, string orderId, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
 {
     return await GatewayForwarder.ForwardPostAsync<object?>(httpContext, httpClientFactory, $"http://orderservice:8080/api/orders/{Uri.EscapeDataString(orderId)}/cancel", null, cancellationToken);
@@ -340,6 +345,16 @@ app.MapPost("/api/gw/orders/{orderId}/after-sales/{afterSaleId}/reject", async (
     return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, $"http://orderservice:8080/api/orders/{Uri.EscapeDataString(orderId)}/after-sales/{Uri.EscapeDataString(afterSaleId)}/reject", body, cancellationToken);
 }).RequireAuthorization("AdminOnly");
 
+app.MapGet("/api/gw/orders/by-shop/{shopId}/after-sales", async (HttpContext httpContext, string shopId, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, $"http://orderservice:8080/api/orders/by-shop/{Uri.EscapeDataString(shopId)}/after-sales"), cancellationToken);
+}).RequireAuthorization();
+
+app.MapGet("/api/gw/orders/by-shop/{shopId}/after-sales/search", async (HttpContext httpContext, string shopId, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, $"http://orderservice:8080/api/orders/by-shop/{Uri.EscapeDataString(shopId)}/after-sales/search"), cancellationToken);
+}).RequireAuthorization();
+
 app.MapGet("/api/gw/orders/me", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
 {
     return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, "http://orderservice:8080/api/orders/me"), cancellationToken);
@@ -359,6 +374,16 @@ app.MapGet("/api/gw/orders/by-user/{userId}/search", async (HttpContext httpCont
 {
     return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, $"http://orderservice:8080/api/orders/by-user/{Uri.EscapeDataString(userId)}/search"), cancellationToken);
 }).RequireAuthorization("AdminOnly");
+
+app.MapGet("/api/gw/orders/by-shop/{shopId}", async (HttpContext httpContext, string shopId, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, $"http://orderservice:8080/api/orders/by-shop/{Uri.EscapeDataString(shopId)}"), cancellationToken);
+}).RequireAuthorization();
+
+app.MapGet("/api/gw/orders/by-shop/{shopId}/search", async (HttpContext httpContext, string shopId, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, $"http://orderservice:8080/api/orders/by-shop/{Uri.EscapeDataString(shopId)}/search"), cancellationToken);
+}).RequireAuthorization();
 
 app.MapGet("/api/gw/orders/{id}", async (HttpContext httpContext, string id, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
 {
@@ -388,6 +413,73 @@ app.MapGet("/api/gw/catalog/items/{id}", async (HttpContext httpContext, string 
 app.MapPut("/api/gw/catalog/items/{id}", async (HttpContext httpContext, string id, ForwardCatalogUpsertRequest request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
 {
     return await GatewayForwarder.ForwardPutAsync(httpContext, httpClientFactory, $"http://catalogservice:8080/api/catalog/items/{id}", request, cancellationToken);
+}).RequireAuthorization();
+
+app.MapPost("/api/gw/catalog/items/{id}/submit", async (HttpContext httpContext, string id, ForwardCatalogSubmitRequest? request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    var body = request ?? new ForwardCatalogSubmitRequest(null);
+    return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, $"http://catalogservice:8080/api/catalog/items/{id}/submit", body, cancellationToken);
+}).RequireAuthorization();
+
+app.MapPost("/api/gw/catalog/items/{id}/approve", async (HttpContext httpContext, string id, ForwardCatalogApproveRequest? request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    var body = request ?? new ForwardCatalogApproveRequest(null);
+    return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, $"http://catalogservice:8080/api/catalog/items/{id}/approve", body, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapPost("/api/gw/catalog/items/{id}/reject", async (HttpContext httpContext, string id, ForwardCatalogRejectRequest request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, $"http://catalogservice:8080/api/catalog/items/{id}/reject", request, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapGet("/api/gw/catalog/items/{id}/audit-history", async (HttpContext httpContext, string id, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, $"http://catalogservice:8080/api/catalog/items/{id}/audit-history", cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapPost("/api/gw/catalog/items/{id}/shelf", async (HttpContext httpContext, string id, ForwardCatalogSetShelfRequest request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, $"http://catalogservice:8080/api/catalog/items/{id}/shelf", request, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapPost("/api/gw/catalog/items/{id}/shelf-schedule", async (HttpContext httpContext, string id, ForwardCatalogSetShelfScheduleRequest request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, $"http://catalogservice:8080/api/catalog/items/{id}/shelf-schedule", request, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapPost("/api/gw/catalog/ops/apply-shelf-schedules", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPostAsync<object?>(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, "http://catalogservice:8080/api/catalog/ops/apply-shelf-schedules"), null, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapGet("/api/gw/catalog/categories", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, "http://catalogservice:8080/api/catalog/categories", cancellationToken);
+}).RequireAuthorization();
+
+app.MapPost("/api/gw/catalog/categories/{id}", async (HttpContext httpContext, string id, ForwardCatalogCategoryUpsertRequest request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, $"http://catalogservice:8080/api/catalog/categories/{id}", request, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapPatch("/api/gw/catalog/categories/{id}/sort", async (HttpContext httpContext, string id, ForwardCatalogCategorySortRequest request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPatchAsync(httpContext, httpClientFactory, $"http://catalogservice:8080/api/catalog/categories/{id}/sort", request, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapPatch("/api/gw/catalog/categories/{id}/visibility", async (HttpContext httpContext, string id, ForwardCatalogCategoryVisibilityRequest request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPatchAsync(httpContext, httpClientFactory, $"http://catalogservice:8080/api/catalog/categories/{id}/visibility", request, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapPatch("/api/gw/catalog/categories/{id}/enabled", async (HttpContext httpContext, string id, ForwardCatalogCategoryEnabledRequest request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPatchAsync(httpContext, httpClientFactory, $"http://catalogservice:8080/api/catalog/categories/{id}/enabled", request, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapDelete("/api/gw/catalog/categories/{id}", async (HttpContext httpContext, string id, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardDeleteAsync(httpContext, httpClientFactory, $"http://catalogservice:8080/api/catalog/categories/{id}", cancellationToken);
 }).RequireAuthorization("AdminOnly");
 
 app.MapGet("/api/gw/inventory/{productId}", async (HttpContext httpContext, string productId, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
@@ -465,6 +557,11 @@ app.MapPost("/api/gw/jobs/run/reclaim-expired-inventory-reservations", async (Ht
     return await GatewayForwarder.ForwardPostAsync<object?>(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, "http://jobservice:8080/api/jobs/run/reclaim-expired-inventory-reservations"), null, cancellationToken);
 }).RequireAuthorization("AdminOnly");
 
+app.MapPost("/api/gw/jobs/run/apply-catalog-shelf-schedules", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPostAsync<object?>(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, "http://jobservice:8080/api/jobs/run/apply-catalog-shelf-schedules"), null, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
 app.MapGet("/api/gw/jobs/runs", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
 {
     return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, "http://jobservice:8080/api/jobs/runs"), cancellationToken);
@@ -476,8 +573,17 @@ internal sealed record ForwardLoginRequest(string Account, string Password);
 internal sealed record ForwardRegisterRequest(string Username, string Email, string Password);
 internal sealed record ForwardRolesRequest(string[] Roles);
 internal sealed record ForwardStatusRequest(string Status);
-internal sealed record ForwardCatalogUpsertRequest(string Name, decimal Price, bool IsActive, string? ShopId, IReadOnlyList<ForwardCatalogSkuRequest>? Skus);
+internal sealed record ForwardCatalogUpsertRequest(string Name, decimal Price, bool IsActive, string? ShopId, string? CategoryId, IReadOnlyList<ForwardCatalogSkuRequest>? Skus);
 internal sealed record ForwardCatalogSkuRequest(string SkuId, string Name, decimal? Price, bool IsActive);
+internal sealed record ForwardCatalogSubmitRequest(string? Note);
+internal sealed record ForwardCatalogApproveRequest(string? Note);
+internal sealed record ForwardCatalogRejectRequest(string Reason, string? Note);
+internal sealed record ForwardCatalogSetShelfRequest(bool IsOnShelf);
+internal sealed record ForwardCatalogSetShelfScheduleRequest(DateTimeOffset? OnAt, DateTimeOffset? OffAt);
+internal sealed record ForwardCatalogCategoryUpsertRequest(string Name, string? ParentId, int SortOrder, bool IsVisible, bool IsEnabled);
+internal sealed record ForwardCatalogCategorySortRequest(int SortOrder);
+internal sealed record ForwardCatalogCategoryVisibilityRequest(bool IsVisible);
+internal sealed record ForwardCatalogCategoryEnabledRequest(bool IsEnabled);
 internal sealed record ForwardInventorySetRequest(int Quantity);
 internal sealed record ForwardInventoryChangeRequest(int Quantity);
 internal sealed record ForwardCreatePromotionRequest(
@@ -496,7 +602,7 @@ internal sealed record ForwardCreateUserAddressRequest(string ReceiverName, stri
 internal sealed record ForwardUpdateUserAddressRequest(string? ReceiverName, string? Phone, string? Region, string? Detail, bool? IsDefault);
 internal sealed record ForwardSimulatePayRequest(string? IdempotencyKey);
 internal sealed record ForwardPaymentCallbackRequest(string CallbackId, string OrderId, string TransactionId, decimal Amount, string Status, DateTimeOffset PaidAt);
-internal sealed record ForwardSubOrderShipRequest(string? TrackingNumber);
+internal sealed record ForwardSubOrderShipRequest(string? TrackingNumber, string? CarrierCode = null, string? CarrierName = null);
 internal sealed record ForwardCreateAfterSaleRequest(string? SubOrderId, string Reason, string? Detail, decimal? RequestedAmount);
 internal sealed record ForwardReviewAfterSaleRequest(string? Note);
 internal sealed record ForwardReplaceCartRequest(IReadOnlyList<ForwardCartLineDto> Lines);

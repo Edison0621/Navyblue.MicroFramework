@@ -45,3 +45,18 @@ public sealed record OrderPaymentFailedEvent(
     string? TransactionId,
     string Reason,
     DateTimeOffset OccurredAt);
+public sealed record OrderShippedEvent(
+    string OrderId,
+    string SubOrderId,
+    string ShopId,
+    string? UserId,
+    string? TrackingNumber,
+    string? CarrierCode,
+    string? CarrierName,
+    DateTimeOffset OccurredAt);
+public sealed record OrderDeliveredEvent(
+    string OrderId,
+    string SubOrderId,
+    string ShopId,
+    string? UserId,
+    DateTimeOffset OccurredAt);

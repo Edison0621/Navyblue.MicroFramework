@@ -83,7 +83,13 @@ public sealed class OrderPaymentController(
         if (!capture.Success || string.IsNullOrWhiteSpace(capture.TransactionId))
         {
             return StatusCode(StatusCodes.Status502BadGateway,
-                new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.UpstreamError, "Payment capture failed.", new { capture.Error })));
+                new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.UpstreamError, "Payment capture failed.", new
+                {
+                    capture.Error,
+                    capture.ErrorCode,
+                    capture.Retryable,
+                    capture.Gateway
+                })));
         }
 
         var now = DateTimeOffset.UtcNow;

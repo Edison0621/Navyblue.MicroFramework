@@ -26,6 +26,17 @@ builder.Services.AddHttpClient("inventoryservice", (sp, client) =>
     client.BaseAddress = new Uri(baseUrl + "/", UriKind.Absolute);
     client.Timeout = TimeSpan.FromSeconds(60);
 });
+builder.Services.AddHttpClient("catalogservice", (sp, client) =>
+{
+    var baseUrl = builder.Configuration["Jobs:CatalogServiceBaseUrl"]?.Trim().TrimEnd('/');
+    if (string.IsNullOrWhiteSpace(baseUrl))
+    {
+        baseUrl = "http://localhost:5008";
+    }
+
+    client.BaseAddress = new Uri(baseUrl + "/", UriKind.Absolute);
+    client.Timeout = TimeSpan.FromSeconds(60);
+});
 builder.Services.AddControllers();
 builder.Services.AddScoped<IJobRunRepository, DaprJobRunRepository>();
 builder.Services.AddOpenApi();

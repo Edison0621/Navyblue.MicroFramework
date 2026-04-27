@@ -31,11 +31,6 @@ public sealed class OrderFulfillmentController(
             return NotFound(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.NotFound, "Order not found.")));
         }
 
-        if (!OrderAccess.CanAccessOrder(User, order))
-        {
-            return OrderAccess.Forbidden();
-        }
-
         if (order.Status != OrderStatus.Confirmed)
         {
             return Conflict(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidFulfillmentState, "Order is not in a shippable state.", new { order.Status })));
@@ -45,6 +40,11 @@ public sealed class OrderFulfillmentController(
         if (sub is null)
         {
             return NotFound(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.SubOrderNotFound, "Sub-order not found.")));
+        }
+
+        if (!OrderAccess.CanManageSubOrder(User, order, sub))
+        {
+            return OrderAccess.Forbidden();
         }
 
         SubOrderFulfillmentHelper.Normalize(sub);
@@ -66,8 +66,24 @@ public sealed class OrderFulfillmentController(
         sub.FulfillmentStatus = SubOrderFulfillmentStatus.Shipped;
         sub.ShippedAt = DateTimeOffset.UtcNow;
         sub.TrackingNumber = string.IsNullOrWhiteSpace(request?.TrackingNumber) ? null : request!.TrackingNumber.Trim();
+        sub.CarrierCode = string.IsNullOrWhiteSpace(request?.CarrierCode) ? null : request!.CarrierCode.Trim();
+        sub.CarrierName = string.IsNullOrWhiteSpace(request?.CarrierName) ? null : request!.CarrierName.Trim();
+        sub.TrackingEvents.Add(new SubOrderTrackingEvent
+        {
+            Status = "Shipped",
+            Message = "Sub-order shipped.",
+            Source = "order-service",
+            TrackingNumber = sub.TrackingNumber,
+            CarrierCode = sub.CarrierCode,
+            CarrierName = sub.CarrierName,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
         order.UpdatedAt = DateTimeOffset.UtcNow;
         await _stateStore.SaveAsync(order.Id, order, cancellationToken);
+        await _eventBus.PublishAsync(
+            new OrderShippedEvent(order.Id, sub.Id, sub.ShopId, order.UserId, sub.TrackingNumber, sub.CarrierCode, sub.CarrierName, DateTimeOffset.UtcNow),
+            topic: "order.shipped",
+            cancellationToken: cancellationToken);
         _logger.LogInformation("SubOrder shipped. OrderId={OrderId}, SubOrderId={SubOrderId}", orderId, subOrderId);
         return Ok(new ApiResponse<Order>(true, order, null));
     }
@@ -81,11 +97,6 @@ public sealed class OrderFulfillmentController(
             return NotFound(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.NotFound, "Order not found.")));
         }
 
-        if (!OrderAccess.CanAccessOrder(User, order))
-        {
-            return OrderAccess.Forbidden();
-        }
-
         if (order.Status != OrderStatus.Confirmed && order.Status != OrderStatus.Completed)
         {
             return Conflict(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidFulfillmentState, "Order is not in a deliverable state.", new { order.Status })));
@@ -95,6 +106,11 @@ public sealed class OrderFulfillmentController(
         if (sub is null)
         {
             return NotFound(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.SubOrderNotFound, "Sub-order not found.")));
+        }
+
+        if (!OrderAccess.CanManageSubOrder(User, order, sub))
+        {
+            return OrderAccess.Forbidden();
         }
 
         SubOrderFulfillmentHelper.Normalize(sub);
@@ -115,6 +131,16 @@ public sealed class OrderFulfillmentController(
 
         sub.FulfillmentStatus = SubOrderFulfillmentStatus.Delivered;
         sub.DeliveredAt = DateTimeOffset.UtcNow;
+        sub.TrackingEvents.Add(new SubOrderTrackingEvent
+        {
+            Status = "Delivered",
+            Message = "Sub-order delivered.",
+            Source = "order-service",
+            TrackingNumber = sub.TrackingNumber,
+            CarrierCode = sub.CarrierCode,
+            CarrierName = sub.CarrierName,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
         order.UpdatedAt = DateTimeOffset.UtcNow;
 
         var completedNow = SubOrderFulfillmentHelper.AllActiveSubOrdersDelivered(order.SubOrders);
@@ -124,6 +150,10 @@ public sealed class OrderFulfillmentController(
         }
 
         await _stateStore.SaveAsync(order.Id, order, cancellationToken);
+        await _eventBus.PublishAsync(
+            new OrderDeliveredEvent(order.Id, sub.Id, sub.ShopId, order.UserId, DateTimeOffset.UtcNow),
+            topic: "order.delivered",
+            cancellationToken: cancellationToken);
         if (completedNow)
         {
             await _eventBus.PublishAsync(

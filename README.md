@@ -227,6 +227,30 @@ Sprint E 事件已接入下游：
 - 订单域关键写操作（购物车改写、下单、支付、发起售后）会通过 UserService 内部接口校验用户状态。
 - 仅 `status=active` 允许继续执行；冻结/禁用账号会返回 403（`user_disabled`）。
 
+4h. **商家子单最小权限（PRD 商家侧能力补齐）**：
+
+- 子单操作（发货/签收/子单取消）支持商家角色访问：JWT `roles` 中包含 `shop:<shopId>`（或 `shop-manager:<shopId>`）即可管理对应店铺子单。
+- 管理员仍可操作全部子单；订单买家也可操作自己的子单，且无法跨店操作其他商家子单。
+- 商家订单视图：新增 `GET /api/orders/by-shop/{shopId}` 与 `GET /api/orders/by-shop/{shopId}/search`，返回店铺视角子单列表（支持 `orderStatus`、`subOrderStatus`、`productId`、`skuId`、时间范围和分页过滤）。
+- 商家售后工作台：新增 `GET /api/orders/by-shop/{shopId}/after-sales` 与 `GET /api/orders/by-shop/{shopId}/after-sales/search`，支持按 `status`、`refundStatus`、时间范围和分页筛选。
+
+4i. **商品域后台 + 物流跟踪闭环（PRD full_plus + carrier_adapter）**：
+
+- 类目后台：新增类目树 CRUD（创建/更新、排序、显示、启停），并支持类目停用联动下架（同类目在架商品自动下架）。
+- 类目治理增强：支持类目删除（存在子类目或挂载商品时拒绝删除）；类目停用时会对子树类目递归联动下架。
+- 审核流：商品支持提审、通过、驳回、审核历史；上架前置 `AuditStatus=Approved`。
+- 权限收口：商品写操作（改商品、提审、上下架、定时上下架）要求 admin 或店铺归属商家（`shop:<shopId>` / `shop-manager:<shopId>`）。
+- 上下架与定时：支持即时上/下架与定时窗口（`onAt/offAt`），提供 `POST /api/gw/catalog/ops/apply-shelf-schedules` 执行幂等调度。
+- 下单规则收口：OrderService 下单校验增加“审核通过 + 当前可上架 + 类目可用”约束，并对旧数据启用兼容回退（历史仅 `isActive` 数据可继续交易）。
+- 物流轨迹：子单新增 `carrierCode/carrierName/trackingNumber` 与轨迹事件（`CreatedAt/Status/Message/Source`），发货/签收必落轨迹，并提供 `GET /api/gw/orders/{orderId}/sub-orders/{subOrderId}/tracking` 查询。
+- 观测事件：新增并发布 `order.shipped`、`order.delivered`，Audit/Notification 已订阅消费。
+
+4j. **生产骨架能力边界（可扩展点）**：
+
+- 支付网关：`IPaymentGateway` 结果结构补齐了 `errorCode/retryable/gateway/gatewayTransactionId`，用于后续接真实 PSP 的错误分层与重试策略。
+- 物流网关：`ShipmentTracking` 增加 provider 配置（provider/timeout/retry/deduplicate/source），默认 `mock`，便于替换真实承运商实现。
+- 调度运维：类目定时上下架支持直接 ops 触发与 Job 触发两种入口，执行结果统一落 Job run 记录。
+
 订单返回中含主单 `Status`（`Pending` / **`AwaitingPayment`** / `Confirmed` / `Completed` / `Cancelled` / `Failed`）、`paymentDueAt` / `paidAt`、失败原因（失败时）、金额（`OriginalAmount` / `DiscountAmount` / `FinalAmount`），以及 `subOrders`（按 `shopId` 拆分；子单 `fulfillmentStatus`：`PendingShipment` / `Shipped` / `Delivered` / `Cancelled`）。
 
 查询单笔（须为订单所有者或 **admin** JWT）：
@@ -262,7 +286,8 @@ curl http://localhost:5001/demo/config
 7. **子单履约（示例）**：主单须先为 **`Confirmed`（已模拟支付）**，每个子单依次 `PendingShipment` → `Shipped` → `Delivered`；全部子单送达后主单变为 `Completed`。将 `order.id` 与各 `order.subOrders[i].id` 代入：
 
 ```bash
-curl -X POST http://localhost:5006/api/gw/orders/<orderId>/sub-orders/<subOrderId>/ship -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"trackingNumber\":\"SF123\"}"
+curl -X POST http://localhost:5006/api/gw/orders/<orderId>/sub-orders/<subOrderId>/ship -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"trackingNumber\":\"SF123\",\"carrierCode\":\"SF\",\"carrierName\":\"ShunFeng\"}"
+curl http://localhost:5006/api/gw/orders/<orderId>/sub-orders/<subOrderId>/tracking -H "Authorization: Bearer ACCESS_TOKEN"
 curl -X POST http://localhost:5006/api/gw/orders/<orderId>/sub-orders/<subOrderId>/deliver -H "Authorization: Bearer ACCESS_TOKEN"
 ```
 

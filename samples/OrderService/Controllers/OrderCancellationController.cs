@@ -32,11 +32,6 @@ public sealed class OrderCancellationController(
             return NotFound(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.NotFound, "Order not found.")));
         }
 
-        if (!OrderAccess.CanAccessOrder(User, order))
-        {
-            return OrderAccess.Forbidden();
-        }
-
         if (order.Status == OrderStatus.Cancelled)
         {
             return Ok(new ApiResponse<Order>(true, order, null));
@@ -114,6 +109,11 @@ public sealed class OrderCancellationController(
         if (sub is null)
         {
             return NotFound(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.SubOrderNotFound, "Sub-order not found.")));
+        }
+
+        if (!OrderAccess.CanManageSubOrder(User, order, sub))
+        {
+            return OrderAccess.Forbidden();
         }
 
         SubOrderFulfillmentHelper.Normalize(sub);

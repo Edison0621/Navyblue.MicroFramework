@@ -384,10 +384,12 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - Jobs__OrderServiceBaseUrl=http://orderservice:8080
       - Jobs__InventoryServiceBaseUrl=http://inventoryservice:8080
+      - Jobs__CatalogServiceBaseUrl=http://catalogservice:8080
     depends_on:
       - redis
       - orderservice
       - inventoryservice
+      - catalogservice
       - otel-collector
 
   jobservice-dapr:

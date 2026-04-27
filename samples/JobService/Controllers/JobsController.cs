@@ -10,6 +10,7 @@ public sealed class JobsController(IJobRunRepository jobRunRepository, IHttpClie
 {
     private const string OrderServiceClientName = "orderservice";
     private const string InventoryServiceClientName = "inventoryservice";
+    private const string CatalogServiceClientName = "catalogservice";
     [HttpPost("run/reconcile-inventory")]
     public async Task<IActionResult> RunReconcileInventory(CancellationToken cancellationToken)
     {
@@ -95,6 +96,28 @@ public sealed class JobsController(IJobRunRepository jobRunRepository, IHttpClie
         var run = new JobRun(
             Guid.NewGuid().ToString("N"),
             "reclaim-expired-inventory-reservations",
+            success ? "success" : "failed",
+            success ? truncated : $"HTTP {(int)response.StatusCode}: {truncated}",
+            DateTimeOffset.UtcNow);
+        await jobRunRepository.AppendAsync(run, cancellationToken);
+        return Accepted($"/api/jobs/runs/{run.Id}", new ApiResponse<JobRun>(true, run, null));
+    }
+
+    [HttpPost("run/apply-catalog-shelf-schedules")]
+    public async Task<IActionResult> RunApplyCatalogShelfSchedules([FromQuery] int take = 500, CancellationToken cancellationToken = default)
+    {
+        var safeTake = Math.Clamp(take, 1, 2000);
+        var client = httpClientFactory.CreateClient(CatalogServiceClientName);
+        using var response = await client.PostAsync(
+            $"api/catalog/ops/apply-shelf-schedules?take={safeTake}",
+            content: null,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        var truncated = body.Length > 2000 ? body[..2000] : body;
+        var success = response.IsSuccessStatusCode;
+        var run = new JobRun(
+            Guid.NewGuid().ToString("N"),
+            "apply-catalog-shelf-schedules",
             success ? "success" : "failed",
             success ? truncated : $"HTTP {(int)response.StatusCode}: {truncated}",
             DateTimeOffset.UtcNow);

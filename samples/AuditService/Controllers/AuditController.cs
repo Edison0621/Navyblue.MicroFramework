@@ -152,6 +152,38 @@ public sealed class AuditController(IAuditRepository auditRepository) : Controll
         return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
     }
 
+    [HttpPost("subscriptions/order-shipped")]
+    [Topic("orderpubsub", "order.shipped")]
+    public async Task<IActionResult> OnOrderShipped([FromBody] OrderShippedEvent payload, CancellationToken cancellationToken)
+    {
+        var request = new AuditEventRequest(
+            ActorId: "system",
+            Action: "order.shipped",
+            ResourceType: "order",
+            ResourceId: payload.OrderId,
+            Result: "success",
+            Detail: $"subOrderId={payload.SubOrderId};shopId={payload.ShopId};tracking={payload.TrackingNumber ?? "-"};carrier={payload.CarrierCode ?? "-"}");
+        var entry = BuildAuditEvent(request);
+        await auditRepository.AppendAsync(entry, cancellationToken);
+        return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
+    }
+
+    [HttpPost("subscriptions/order-delivered")]
+    [Topic("orderpubsub", "order.delivered")]
+    public async Task<IActionResult> OnOrderDelivered([FromBody] OrderDeliveredEvent payload, CancellationToken cancellationToken)
+    {
+        var request = new AuditEventRequest(
+            ActorId: "system",
+            Action: "order.delivered",
+            ResourceType: "order",
+            ResourceId: payload.OrderId,
+            Result: "success",
+            Detail: $"subOrderId={payload.SubOrderId};shopId={payload.ShopId};userId={payload.UserId ?? "-"}");
+        var entry = BuildAuditEvent(request);
+        await auditRepository.AppendAsync(entry, cancellationToken);
+        return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
+    }
+
     [HttpGet("events")]
     public async Task<IActionResult> GetAuditEvents(
         [FromQuery] string? actorId,

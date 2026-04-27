@@ -217,6 +217,30 @@ Sprint E events are wired to downstream consumers:
 - Critical order-domain write operations (cart update, order creation/checkout, pay, after-sale apply) now validate user status via internal UserService API.
 - Only `status=active` can proceed; blocked/frozen users receive 403 with `user_disabled`.
 
+4h. **Merchant sub-order scoped permission (PRD merchant gap)**:
+
+- Sub-order operations (ship, deliver, sub-order cancel) now allow merchant-scoped access via JWT roles `shop:<shopId>` (or `shop-manager:<shopId>`).
+- Admin can still operate all sub-orders; order owner can still operate own sub-orders; cross-shop sub-order operations are denied.
+- Merchant order views: added `GET /api/orders/by-shop/{shopId}` and `GET /api/orders/by-shop/{shopId}/search` for shop-scoped sub-order queues (`orderStatus`, `subOrderStatus`, `productId`, `skuId`, time-range, pagination filters).
+- Merchant after-sale workbench: added `GET /api/orders/by-shop/{shopId}/after-sales` and `GET /api/orders/by-shop/{shopId}/after-sales/search` with `status`, `refundStatus`, time-range, and pagination filters.
+
+4i. **Catalog admin + shipment tracking closure (PRD full_plus + carrier_adapter)**:
+
+- Category admin: added category tree APIs (create/update, sort, visibility, enable/disable), plus disable-to-unshelf linkage for items under that category.
+- Category governance: added category delete API (blocked when child categories or linked items exist), and recursive subtree unshelf linkage when a category is disabled.
+- Review flow: products support submit/approve/reject and audit history; shelf-on requires `AuditStatus=Approved`.
+- Permission tightening: catalog write actions (upsert/submit/shelf/schedule) now require admin or shop-scoped roles (`shop:<shopId>` / `shop-manager:<shopId>`).
+- Shelf rules: immediate on/off shelf and scheduled shelf windows (`onAt/offAt`) are supported, with idempotent scheduler endpoint `POST /api/gw/catalog/ops/apply-shelf-schedules`.
+- Order rule alignment: OrderService now enforces “approved + currently on shelf + category enabled” in checkout validations, with backward compatibility fallback for legacy `isActive`-only catalog records.
+- Tracking timeline: sub-orders now include `carrierCode/carrierName/trackingNumber` and timeline events (`CreatedAt/Status/Message/Source`). Shipping and delivery always append events. Query API: `GET /api/gw/orders/{orderId}/sub-orders/{subOrderId}/tracking`.
+- Observability: new `order.shipped` and `order.delivered` events are published and consumed by Audit/Notification services.
+
+4j. **Production-ready extension skeletons**:
+
+- Payment gateway: `IPaymentGateway` result contracts now include `errorCode/retryable/gateway/gatewayTransactionId` to support real PSP integration and retry orchestration.
+- Shipment provider: `ShipmentTracking` supports provider config (`provider/timeout/retry/deduplicate/source`) with `mock` as default implementation.
+- Ops scheduling: catalog shelf scheduling is runnable from both ops endpoint and JobService route, with unified Job run records.
+
 Fetch one order by id (owner or **admin** JWT):
 
 ```bash
@@ -252,7 +276,8 @@ curl http://localhost:5001/demo/config
 7. **Sub-order fulfillment (demo)**: the main order must be **`Confirmed` (simulated payment done)** before shipping. Each sub-order moves `PendingShipment` → `Shipped` → `Delivered`; when all sub-orders are delivered, the main order becomes `Completed`. Substitute `order.id` and each `order.subOrders[i].id`:
 
 ```bash
-curl -X POST http://localhost:5006/api/gw/orders/<orderId>/sub-orders/<subOrderId>/ship -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"trackingNumber\":\"SF123\"}"
+curl -X POST http://localhost:5006/api/gw/orders/<orderId>/sub-orders/<subOrderId>/ship -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"trackingNumber\":\"SF123\",\"carrierCode\":\"SF\",\"carrierName\":\"ShunFeng\"}"
+curl http://localhost:5006/api/gw/orders/<orderId>/sub-orders/<subOrderId>/tracking -H "Authorization: Bearer ACCESS_TOKEN"
 curl -X POST http://localhost:5006/api/gw/orders/<orderId>/sub-orders/<subOrderId>/deliver -H "Authorization: Bearer ACCESS_TOKEN"
 ```
 

@@ -32,9 +32,12 @@ public sealed class SubOrder
     public decimal Subtotal { get; set; }
     public string FulfillmentStatus { get; set; } = SubOrderFulfillmentStatus.PendingShipment;
     public string? TrackingNumber { get; set; }
+    public string? CarrierCode { get; set; }
+    public string? CarrierName { get; set; }
     public DateTimeOffset? ShippedAt { get; set; }
     public DateTimeOffset? DeliveredAt { get; set; }
     public DateTimeOffset? CancelledAt { get; set; }
+    public List<SubOrderTrackingEvent> TrackingEvents { get; set; } = [];
 }
 
 public sealed class OrderLine
@@ -98,4 +101,15 @@ public static class AfterSaleRefundStatus
     public const string Pending = "Pending";
     public const string Succeeded = "Succeeded";
     public const string Failed = "Failed";
+}
+
+public sealed class SubOrderTrackingEvent
+{
+    public string Status { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public string Source { get; set; } = "system";
+    public string? TrackingNumber { get; set; }
+    public string? CarrierCode { get; set; }
+    public string? CarrierName { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

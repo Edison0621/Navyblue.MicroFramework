@@ -165,6 +165,36 @@ public sealed class NotificationsController(INotificationRepository notification
         return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
     }
 
+    [HttpPost("subscriptions/order-shipped")]
+    [Topic("orderpubsub", "order.shipped")]
+    public async Task<IActionResult> OnOrderShipped([FromBody] OrderShippedEvent payload, CancellationToken cancellationToken)
+    {
+        var item = new NotificationItem(
+            Guid.NewGuid().ToString("N"),
+            "system",
+            "ops",
+            "Order Shipped",
+            $"Order {payload.OrderId} subOrder={payload.SubOrderId} shipped, shop={payload.ShopId}, tracking={payload.TrackingNumber ?? "-"}, carrier={payload.CarrierCode ?? "-"}",
+            DateTimeOffset.UtcNow);
+        await notificationRepository.AppendAsync(item, cancellationToken);
+        return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
+    }
+
+    [HttpPost("subscriptions/order-delivered")]
+    [Topic("orderpubsub", "order.delivered")]
+    public async Task<IActionResult> OnOrderDelivered([FromBody] OrderDeliveredEvent payload, CancellationToken cancellationToken)
+    {
+        var item = new NotificationItem(
+            Guid.NewGuid().ToString("N"),
+            "system",
+            "ops",
+            "Order Delivered",
+            $"Order {payload.OrderId} subOrder={payload.SubOrderId} delivered, shop={payload.ShopId}",
+            DateTimeOffset.UtcNow);
+        await notificationRepository.AppendAsync(item, cancellationToken);
+        return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetRecent([FromQuery] int page, [FromQuery] int pageSize, CancellationToken cancellationToken)
     {

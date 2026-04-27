@@ -16,6 +16,8 @@ public static class ApiErrorCodes
     public const string InvalidPromotion = "invalid_promotion";
     public const string InventoryReservationFailed = "inventory_reservation_failed";
     public const string OrderCreationFailed = "order_creation_failed";
+    public const string InvalidCatalogState = "invalid_catalog_state";
+    public const string Forbidden = "forbidden";
 }
 public sealed record PagedResult<T>(IReadOnlyCollection<T> Items, int Page, int PageSize, int Total);
 public sealed record PageQuery(int Page = 1, int PageSize = 50)

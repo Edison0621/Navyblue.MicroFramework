@@ -112,15 +112,24 @@ GET {{gw}}/api/gw/orders/{{orderId}}
 Authorization: Bearer {{token}}
 
 ### Ship sub-order
+# Merchant token with role `shop:<subOrder.shopId>` can call this endpoint too.
 POST {{gw}}/api/gw/orders/{{orderId}}/sub-orders/{{subOrderId}}/ship
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "trackingNumber": "SF123"
+  "trackingNumber": "SF123",
+  "carrierCode": "SF",
+  "carrierName": "ShunFeng"
 }
 
+### Query sub-order tracking timeline
+# response payload shape: { success, data: { provider, source, events[] }, error }
+GET {{gw}}/api/gw/orders/{{orderId}}/sub-orders/{{subOrderId}}/tracking
+Authorization: Bearer {{token}}
+
 ### Deliver sub-order
+# Merchant token with role `shop:<subOrder.shopId>` can call this endpoint too.
 POST {{gw}}/api/gw/orders/{{orderId}}/sub-orders/{{subOrderId}}/deliver
 Authorization: Bearer {{token}}
 
@@ -156,6 +165,7 @@ Authorization: Bearer {{token}}
 # { "note": "insufficient evidence" }
 
 ### Cancel sub-order (only PendingShipment)
+# Merchant token with role `shop:<subOrder.shopId>` can call this endpoint too.
 # POST {{gw}}/api/gw/orders/{{orderId}}/sub-orders/{{subOrderId}}/cancel
 # Authorization: Bearer {{token}}
 
@@ -171,6 +181,22 @@ Authorization: Bearer {{token}}
 # GET {{gw}}/api/gw/orders/by-user/{userId}/search?status=Completed&from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z&page=1&pageSize=20
 # Authorization: Bearer {{adminToken}}
 
+### Merchant: list orders by shop (token must have role `shop:<shopId>`)
+# GET {{gw}}/api/gw/orders/by-shop/shop-east?take=20
+# Authorization: Bearer {{merchantToken}}
+
+### Merchant: search orders by shop
+# GET {{gw}}/api/gw/orders/by-shop/shop-east/search?orderStatus=Confirmed&subOrderStatus=PendingShipment&page=1&pageSize=20
+# Authorization: Bearer {{merchantToken}}
+
+### Merchant: list after-sales by shop
+# GET {{gw}}/api/gw/orders/by-shop/shop-east/after-sales?take=20
+# Authorization: Bearer {{merchantToken}}
+
+### Merchant: search after-sales by shop
+# GET {{gw}}/api/gw/orders/by-shop/shop-east/after-sales/search?status=Pending&refundStatus=Pending&page=1&pageSize=20
+# Authorization: Bearer {{merchantToken}}
+
 ### Admin: run expire-awaiting-payments job through Gateway
 POST {{gw}}/api/gw/jobs/run/expire-awaiting-payments?maxAgeMinutes=30
 Authorization: Bearer {{adminToken}}
@@ -181,4 +207,334 @@ Authorization: Bearer {{adminToken}}
 
 ### Admin: reclaim expired inventory reservations (Sprint G)
 POST {{gw}}/api/gw/jobs/run/reclaim-expired-inventory-reservations?take=200
+Authorization: Bearer {{adminToken}}
+
+### Admin: create / update category
+POST {{gw}}/api/gw/catalog/categories/cat-electronics
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Electronics",
+  "parentId": null,
+  "sortOrder": 10,
+  "isVisible": true,
+  "isEnabled": true
+}
+
+### Admin: disable category (auto shelf-off descendants' items in this category)
+PATCH {{gw}}/api/gw/catalog/categories/cat-electronics/enabled
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "isEnabled": false
+}
+
+### Admin: delete category (requires no child category and no linked products)
+DELETE {{gw}}/api/gw/catalog/categories/cat-electronics
+Authorization: Bearer {{adminToken}}
+
+### Admin: upsert item with category
+PUT {{gw}}/api/gw/catalog/items/p-300
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Mechanical Keyboard",
+  "price": 399,
+  "isActive": true,
+  "shopId": "shop-east",
+  "categoryId": "cat-electronics",
+  "skus": [
+    { "skuId": "p-300-blue", "name": "Blue Switch", "price": 399, "isActive": true }
+  ]
+}
+
+### Merchant: submit product for audit
+POST {{gw}}/api/gw/catalog/items/p-300/submit
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "note": "ready for review"
+}
+
+### Admin: approve product
+POST {{gw}}/api/gw/catalog/items/p-300/approve
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "note": "approved by QA"
+}
+
+### Admin: shelf on immediately
+POST {{gw}}/api/gw/catalog/items/p-300/shelf
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "isOnShelf": true
+}
+
+### Admin: set scheduled shelf window
+POST {{gw}}/api/gw/catalog/items/p-300/shelf-schedule
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "onAt": "2026-04-28T09:00:00Z",
+  "offAt": "2026-05-01T10:00:00Z"
+}
+
+### Admin: apply due shelf schedules
+POST {{gw}}/api/gw/catalog/ops/apply-shelf-schedules?take=500
+Authorization: Bearer {{adminToken}}
+
+### Admin: run schedule apply job via JobService
+POST {{gw}}/api/gw/jobs/run/apply-catalog-shelf-schedules?take=500
+Authorization: Bearer {{adminToken}}
+
+### ===== E2E: Catalog Admin + Tracking =====
+@categoryId = cat-e2e
+@productId = p-e2e-001
+@skuId = p-e2e-001-black
+
+### E2E-1 Admin upsert category
+POST {{gw}}/api/gw/catalog/categories/{{categoryId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "E2E Category",
+  "parentId": null,
+  "sortOrder": 1,
+  "isVisible": true,
+  "isEnabled": true
+}
+
+### E2E-2 Admin upsert product into category
+PUT {{gw}}/api/gw/catalog/items/{{productId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "E2E Keyboard",
+  "price": 299,
+  "isActive": true,
+  "shopId": "shop-east",
+  "categoryId": "{{categoryId}}",
+  "skus": [
+    { "skuId": "{{skuId}}", "name": "Black", "price": 299, "isActive": true }
+  ]
+}
+
+### E2E-3 Merchant submit for audit
+POST {{gw}}/api/gw/catalog/items/{{productId}}/submit
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "note": "submit for e2e"
+}
+
+### E2E-4 Admin approve
+POST {{gw}}/api/gw/catalog/items/{{productId}}/approve
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "note": "approved in e2e"
+}
+
+### E2E-5 Admin shelf on
+POST {{gw}}/api/gw/catalog/items/{{productId}}/shelf
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "isOnShelf": true
+}
+
+### E2E-6 User create order directly (skip cart)
+POST {{gw}}/api/gw/orders
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "addressId": "{{addressId}}",
+  "promoCode": null,
+  "lines": [
+    { "productId": "{{productId}}", "skuId": "{{skuId}}", "quantity": 1 }
+  ]
+}
+
+### E2E-7 Pay order (copy returned order id to @orderId)
+POST {{gw}}/api/gw/orders/{{orderId}}/pay
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "idempotencyKey": "e2e-pay-001"
+}
+
+### E2E-8 Ship sub-order (copy returned subOrder id to @subOrderId)
+POST {{gw}}/api/gw/orders/{{orderId}}/sub-orders/{{subOrderId}}/ship
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "trackingNumber": "E2E-TK-001",
+  "carrierCode": "MOCK",
+  "carrierName": "Mock Express"
+}
+
+### E2E-9 Query tracking timeline
+GET {{gw}}/api/gw/orders/{{orderId}}/sub-orders/{{subOrderId}}/tracking
+Authorization: Bearer {{token}}
+
+### E2E-10 Deliver sub-order
+POST {{gw}}/api/gw/orders/{{orderId}}/sub-orders/{{subOrderId}}/deliver
+Authorization: Bearer {{token}}
+
+### E2E-11 Query tracking again (should contain Delivered)
+GET {{gw}}/api/gw/orders/{{orderId}}/sub-orders/{{subOrderId}}/tracking
+Authorization: Bearer {{token}}
+
+### E2E-12 Inspect downstream observability
+GET {{gw}}/api/gw/audits?page=1&pageSize=20
+Authorization: Bearer {{adminToken}}
+
+### E2E-13 Inspect notifications
+GET {{gw}}/api/gw/notifications?page=1&pageSize=20
+Authorization: Bearer {{adminToken}}
+
+### ===== E2E Negative: Catalog Rules Regression =====
+@negCategoryId = cat-e2e-neg
+@negProductId = p-e2e-neg-001
+@negSkuId = p-e2e-neg-001-black
+
+### NEG-1 Admin upsert category
+POST {{gw}}/api/gw/catalog/categories/{{negCategoryId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "E2E Negative Category",
+  "parentId": null,
+  "sortOrder": 2,
+  "isVisible": true,
+  "isEnabled": true
+}
+
+### NEG-2 Admin upsert product (draft, not submitted/reviewed)
+PUT {{gw}}/api/gw/catalog/items/{{negProductId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "E2E Negative Keyboard",
+  "price": 259,
+  "isActive": true,
+  "shopId": "shop-east",
+  "categoryId": "{{negCategoryId}}",
+  "skus": [
+    { "skuId": "{{negSkuId}}", "name": "Black", "price": 259, "isActive": true }
+  ]
+}
+
+### NEG-3 Try shelf on before approval (expected: 409 invalid_catalog_state)
+POST {{gw}}/api/gw/catalog/items/{{negProductId}}/shelf
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "isOnShelf": true
+}
+
+### NEG-4 Submit for review
+POST {{gw}}/api/gw/catalog/items/{{negProductId}}/submit
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "note": "negative path submit"
+}
+
+### NEG-5 Reject review
+POST {{gw}}/api/gw/catalog/items/{{negProductId}}/reject
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "reason": "quality check failed",
+  "note": "negative path reject"
+}
+
+### NEG-6 Try shelf on after rejection (expected: 409 invalid_catalog_state)
+POST {{gw}}/api/gw/catalog/items/{{negProductId}}/shelf
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "isOnShelf": true
+}
+
+### NEG-7 Approve then shelf on for linkage test
+POST {{gw}}/api/gw/catalog/items/{{negProductId}}/approve
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "note": "approve for category linkage test"
+}
+
+### NEG-8 Shelf on
+POST {{gw}}/api/gw/catalog/items/{{negProductId}}/shelf
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "isOnShelf": true
+}
+
+### NEG-9 Disable category (should auto shelf-off items under this category)
+PATCH {{gw}}/api/gw/catalog/categories/{{negCategoryId}}/enabled
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "isEnabled": false
+}
+
+### NEG-10 Try create order for auto-shelf-off product (expected: 400 invalid_request, off shelf)
+POST {{gw}}/api/gw/orders
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "addressId": "{{addressId}}",
+  "promoCode": null,
+  "lines": [
+    { "productId": "{{negProductId}}", "skuId": "{{negSkuId}}", "quantity": 1 }
+  ]
+}
+
+### NEG-11 Set past-due shelf schedule for idempotency test
+POST {{gw}}/api/gw/catalog/items/{{negProductId}}/shelf-schedule
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "onAt": "2026-01-01T08:00:00Z",
+  "offAt": "2026-01-01T09:00:00Z"
+}
+
+### NEG-12 Apply schedules first time (expected: applied > 0 or state transition happens once)
+POST {{gw}}/api/gw/catalog/ops/apply-shelf-schedules?take=500
+Authorization: Bearer {{adminToken}}
+
+### NEG-13 Apply schedules second time (expected: applied=0, no duplicate mutation)
+POST {{gw}}/api/gw/catalog/ops/apply-shelf-schedules?take=500
 Authorization: Bearer {{adminToken}}

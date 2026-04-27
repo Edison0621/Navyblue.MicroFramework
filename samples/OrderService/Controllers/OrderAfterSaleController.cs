@@ -13,6 +13,7 @@ namespace OrderService.Controllers;
 public sealed class OrderAfterSaleController(
     IEventBus eventBus,
     IStateStore<Order> orderStore,
+    IStateStore<ShopOrderIndex> shopOrderIndexStore,
     IStateStore<OrderRefundIdempotencyRecord> refundIdempotencyStore,
     IStateStore<RefundLedgerIndex> refundLedgerStore,
     IUserService userService,
@@ -96,6 +97,112 @@ public sealed class OrderAfterSaleController(
         return Ok(new ApiResponse<AfterSaleRequest>(true, afterSale, null));
     }
 
+    [HttpGet("by-shop/{shopId}/after-sales")]
+    public async Task<IActionResult> ListAfterSalesByShop(string shopId, [FromQuery] int take = 20, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(shopId))
+        {
+            return BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidRequest, "ShopId is required.")));
+        }
+
+        var normalizedShopId = shopId.Trim();
+        if (!OrderAccess.CanAccessShop(User, normalizedShopId))
+        {
+            return OrderAccess.Forbidden();
+        }
+
+        var safeTake = Math.Clamp(take, 1, 100);
+        var index = await shopOrderIndexStore.GetAsync(ShopOrderIndex.StateKey(normalizedShopId), cancellationToken);
+        if (index?.OrderIds is null || index.OrderIds.Count == 0)
+        {
+            return Ok(new ApiResponse<IReadOnlyList<MerchantAfterSaleView>>(true, [], null));
+        }
+
+        var result = new List<MerchantAfterSaleView>();
+        foreach (var orderId in index.OrderIds.Take(safeTake))
+        {
+            var order = await orderStore.GetAsync(orderId, cancellationToken);
+            if (order is null || order.AfterSales.Count == 0)
+            {
+                continue;
+            }
+
+            result.AddRange(ProjectAfterSalesForShop(order, normalizedShopId));
+        }
+
+        return Ok(new ApiResponse<IReadOnlyList<MerchantAfterSaleView>>(true, result.OrderByDescending(x => x.RequestedAt).ToList(), null));
+    }
+
+    [HttpGet("by-shop/{shopId}/after-sales/search")]
+    public async Task<IActionResult> SearchAfterSalesByShop(
+        string shopId,
+        [FromQuery] string? status,
+        [FromQuery] string? refundStatus,
+        [FromQuery] DateTimeOffset? from,
+        [FromQuery] DateTimeOffset? to,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(shopId))
+        {
+            return BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidRequest, "ShopId is required.")));
+        }
+
+        var normalizedShopId = shopId.Trim();
+        if (!OrderAccess.CanAccessShop(User, normalizedShopId))
+        {
+            return OrderAccess.Forbidden();
+        }
+
+        var index = await shopOrderIndexStore.GetAsync(ShopOrderIndex.StateKey(normalizedShopId), cancellationToken);
+        if (index?.OrderIds is null || index.OrderIds.Count == 0)
+        {
+            var empty = new PagedResult<MerchantAfterSaleView>([], 1, 20, 0);
+            return Ok(new ApiResponse<PagedResult<MerchantAfterSaleView>>(true, empty, null));
+        }
+
+        var all = new List<MerchantAfterSaleView>();
+        foreach (var orderId in index.OrderIds)
+        {
+            var order = await orderStore.GetAsync(orderId, cancellationToken);
+            if (order is null || order.AfterSales.Count == 0)
+            {
+                continue;
+            }
+
+            all.AddRange(ProjectAfterSalesForShop(order, normalizedShopId));
+        }
+
+        IEnumerable<MerchantAfterSaleView> filtered = all;
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            filtered = filtered.Where(x => string.Equals(x.Status, status.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(refundStatus))
+        {
+            filtered = filtered.Where(x => string.Equals(x.RefundStatus, refundStatus.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (from.HasValue)
+        {
+            filtered = filtered.Where(x => x.RequestedAt >= from.Value);
+        }
+
+        if (to.HasValue)
+        {
+            filtered = filtered.Where(x => x.RequestedAt <= to.Value);
+        }
+
+        var q = new PageQuery(page, pageSize);
+        var ordered = filtered.OrderByDescending(x => x.RequestedAt).ToList();
+        var total = ordered.Count;
+        var items = ordered.Skip((q.SafePage - 1) * q.SafePageSize).Take(q.SafePageSize).ToList();
+        var data = new PagedResult<MerchantAfterSaleView>(items, q.SafePage, q.SafePageSize, total);
+        return Ok(new ApiResponse<PagedResult<MerchantAfterSaleView>>(true, data, null));
+    }
+
     [HttpPost("{orderId}/after-sales/{afterSaleId}/approve")]
     [Authorize(Policy = "AdminOnly")]
     public async Task<IActionResult> ApproveAfterSale(string orderId, string afterSaleId, [FromBody] ReviewAfterSaleRequest? request, CancellationToken cancellationToken)
@@ -172,7 +279,13 @@ public sealed class OrderAfterSaleController(
                 if (!refund.Success || string.IsNullOrWhiteSpace(refund.RefundTransactionId))
                 {
                     entry.RefundStatus = AfterSaleRefundStatus.Failed;
-                    return StatusCode(StatusCodes.Status502BadGateway, new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.UpstreamError, "Refund failed.", new { refund.Error })));
+                    return StatusCode(StatusCodes.Status502BadGateway, new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.UpstreamError, "Refund failed.", new
+                    {
+                        refund.Error,
+                        refund.ErrorCode,
+                        refund.Retryable,
+                        refund.Gateway
+                    })));
                 }
 
                 entry.RefundStatus = AfterSaleRefundStatus.Succeeded;
@@ -251,4 +364,57 @@ public sealed class OrderAfterSaleController(
 
     private static string BuildRefundIdempotencyStateKey(string orderId, string afterSaleId)
         => $"order:refund-idem:{orderId}:{afterSaleId}";
+
+    private static List<MerchantAfterSaleView> ProjectAfterSalesForShop(Order order, string shopId)
+    {
+        var subOrderById = order.SubOrders
+            .Where(x => string.Equals(x.ShopId, shopId, StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(x => x.Id, x => x, StringComparer.Ordinal);
+        var list = new List<MerchantAfterSaleView>();
+        foreach (var afterSale in order.AfterSales)
+        {
+            if (string.IsNullOrWhiteSpace(afterSale.SubOrderId))
+            {
+                foreach (var subOrder in subOrderById.Values)
+                {
+                    list.Add(new MerchantAfterSaleView(
+                        OrderId: order.Id,
+                        ShopId: subOrder.ShopId,
+                        SubOrderId: subOrder.Id,
+                        AfterSaleId: afterSale.Id,
+                        Status: afterSale.Status,
+                        Reason: afterSale.Reason,
+                        Detail: afterSale.Detail,
+                        RequestedAmount: afterSale.RequestedAmount,
+                        RequestedByUserId: afterSale.RequestedByUserId,
+                        RequestedAt: afterSale.RequestedAt,
+                        RefundStatus: afterSale.RefundStatus,
+                        RefundedAmount: afterSale.RefundedAmount,
+                        RefundedAt: afterSale.RefundedAt));
+                }
+
+                continue;
+            }
+
+            if (subOrderById.TryGetValue(afterSale.SubOrderId, out var matched))
+            {
+                list.Add(new MerchantAfterSaleView(
+                    OrderId: order.Id,
+                    ShopId: matched.ShopId,
+                    SubOrderId: matched.Id,
+                    AfterSaleId: afterSale.Id,
+                    Status: afterSale.Status,
+                    Reason: afterSale.Reason,
+                    Detail: afterSale.Detail,
+                    RequestedAmount: afterSale.RequestedAmount,
+                    RequestedByUserId: afterSale.RequestedByUserId,
+                    RequestedAt: afterSale.RequestedAt,
+                    RefundStatus: afterSale.RefundStatus,
+                    RefundedAmount: afterSale.RefundedAmount,
+                    RefundedAt: afterSale.RefundedAt));
+            }
+        }
+
+        return list;
+    }
 }

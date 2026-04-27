@@ -16,6 +16,7 @@ public sealed class OrderController(
     IStateStore<Order> stateStore,
     IStateStore<ShoppingCart> cartStateStore,
     IStateStore<UserOrderIndex> userOrderIndexStore,
+    IStateStore<ShopOrderIndex> shopOrderIndexStore,
     IStateStore<PaymentPendingIndex> paymentPendingIndexStore,
     IProductService productService,
     ICatalogService catalogService,
@@ -30,6 +31,7 @@ public sealed class OrderController(
     private readonly IStateStore<Order> _stateStore = stateStore;
     private readonly IStateStore<ShoppingCart> _cartStateStore = cartStateStore;
     private readonly IStateStore<UserOrderIndex> _userOrderIndexStore = userOrderIndexStore;
+    private readonly IStateStore<ShopOrderIndex> _shopOrderIndexStore = shopOrderIndexStore;
     private readonly IStateStore<PaymentPendingIndex> _paymentPendingIndexStore = paymentPendingIndexStore;
     private readonly IProductService _productService = productService;
     private readonly ICatalogService _catalogService = catalogService;
@@ -246,6 +248,60 @@ public sealed class OrderController(
         return Ok(new ApiResponse<Order>(true, order, null));
     }
 
+    [HttpGet("by-shop/{shopId}")]
+    public async Task<IActionResult> ListOrdersByShop(string shopId, [FromQuery] int take = 20, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(shopId))
+        {
+            return BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidRequest, "ShopId is required.")));
+        }
+
+        var normalizedShopId = shopId.Trim();
+        if (!OrderAccess.CanAccessShop(User, normalizedShopId))
+        {
+            return OrderAccess.Forbidden();
+        }
+
+        return await ListOrdersForShopAsync(normalizedShopId, take, cancellationToken);
+    }
+
+    [HttpGet("by-shop/{shopId}/search")]
+    public async Task<IActionResult> SearchOrdersByShop(
+        string shopId,
+        [FromQuery] string? orderStatus,
+        [FromQuery] string? subOrderStatus,
+        [FromQuery] string? productId,
+        [FromQuery] string? skuId,
+        [FromQuery] DateTimeOffset? from,
+        [FromQuery] DateTimeOffset? to,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(shopId))
+        {
+            return BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidRequest, "ShopId is required.")));
+        }
+
+        var normalizedShopId = shopId.Trim();
+        if (!OrderAccess.CanAccessShop(User, normalizedShopId))
+        {
+            return OrderAccess.Forbidden();
+        }
+
+        return await SearchOrdersForShopAsync(
+            normalizedShopId,
+            orderStatus,
+            subOrderStatus,
+            productId,
+            skuId,
+            from,
+            to,
+            page,
+            pageSize,
+            cancellationToken);
+    }
+
     private async Task<IActionResult> ListOrdersForUserAsync(string userId, int take, CancellationToken cancellationToken)
     {
         var safeTake = Math.Clamp(take, 1, 100);
@@ -343,6 +399,32 @@ public sealed class OrderController(
             await _stateStore.SaveAsync(failed.Id, failed, cancellationToken);
             return new LineResolution(
                 BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidRequest, "Catalog item is inactive."))));
+        }
+
+        if (catalog is not null)
+        {
+            var auditStatus = string.IsNullOrWhiteSpace(catalog.AuditStatus) && catalog.IsActive
+                ? "Approved"
+                : catalog.AuditStatus;
+            if (!string.Equals(auditStatus, "Approved", StringComparison.OrdinalIgnoreCase))
+            {
+                return new LineResolution(
+                    BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidRequest, "Catalog item is not approved."))));
+            }
+
+            var effectiveOnShelf = catalog.IsOnShelf || (string.IsNullOrWhiteSpace(catalog.AuditStatus) && catalog.IsActive);
+            if (!effectiveOnShelf)
+            {
+                return new LineResolution(
+                    BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidRequest, "Catalog item is off shelf."))));
+            }
+
+            var effectiveCategoryEnabled = catalog.CategoryEnabled || string.IsNullOrWhiteSpace(catalog.CategoryId);
+            if (!effectiveCategoryEnabled)
+            {
+                return new LineResolution(
+                    BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidRequest, "Catalog item's category is disabled."))));
+            }
         }
 
         if (catalog is not null)
@@ -516,6 +598,7 @@ public sealed class OrderController(
             await _stateStore.SaveAsync(order.Id, order, cancellationToken);
             await PaymentPendingIndexHelper.AppendOrderIdAsync(_paymentPendingIndexStore, order.Id, cancellationToken);
             await TryAppendUserOrderIndexAsync(order, cancellationToken);
+            await TryAppendShopOrderIndexesAsync(order, cancellationToken);
 
             var (pid, totalQty) = SummarizeForEvent(order);
             await _eventBus.PublishAsync(
@@ -584,6 +667,156 @@ public sealed class OrderController(
         {
             _logger.LogWarning(ex, "Failed to append user order index for {UserId}", order.UserId);
         }
+    }
+
+    private async Task TryAppendShopOrderIndexesAsync(Order order, CancellationToken cancellationToken)
+    {
+        var shopIds = order.SubOrders
+            .Select(x => x.ShopId?.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        foreach (var shopId in shopIds)
+        {
+            try
+            {
+                var key = ShopOrderIndex.StateKey(shopId!);
+                var index = await _shopOrderIndexStore.GetAsync(key, cancellationToken) ?? new ShopOrderIndex();
+                if (index.OrderIds.Contains(order.Id))
+                {
+                    continue;
+                }
+
+                index.OrderIds.Insert(0, order.Id);
+                const int maxIds = 500;
+                if (index.OrderIds.Count > maxIds)
+                {
+                    index.OrderIds = index.OrderIds.Take(maxIds).ToList();
+                }
+
+                await _shopOrderIndexStore.SaveAsync(key, index, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to append shop order index for {ShopId}", shopId);
+            }
+        }
+    }
+
+    private async Task<IActionResult> ListOrdersForShopAsync(string shopId, int take, CancellationToken cancellationToken)
+    {
+        var safeTake = Math.Clamp(take, 1, 100);
+        var key = ShopOrderIndex.StateKey(shopId);
+        var index = await _shopOrderIndexStore.GetAsync(key, cancellationToken);
+        if (index?.OrderIds is null || index.OrderIds.Count == 0)
+        {
+            return Ok(new ApiResponse<IReadOnlyList<MerchantOrderView>>(true, [], null));
+        }
+
+        var items = new List<MerchantOrderView>();
+        foreach (var orderId in index.OrderIds.Take(safeTake))
+        {
+            var o = await _stateStore.GetAsync(orderId, cancellationToken);
+            if (o is null)
+            {
+                continue;
+            }
+
+            items.AddRange(ProjectMerchantOrderViews(o, shopId));
+        }
+
+        return Ok(new ApiResponse<IReadOnlyList<MerchantOrderView>>(true, items, null));
+    }
+
+    private async Task<IActionResult> SearchOrdersForShopAsync(
+        string shopId,
+        string? orderStatus,
+        string? subOrderStatus,
+        string? productId,
+        string? skuId,
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var key = ShopOrderIndex.StateKey(shopId);
+        var index = await _shopOrderIndexStore.GetAsync(key, cancellationToken);
+        if (index?.OrderIds is null || index.OrderIds.Count == 0)
+        {
+            var empty = new PagedResult<MerchantOrderView>([], 1, 20, 0);
+            return Ok(new ApiResponse<PagedResult<MerchantOrderView>>(true, empty, null));
+        }
+
+        var all = new List<MerchantOrderView>();
+        foreach (var orderId in index.OrderIds)
+        {
+            var o = await _stateStore.GetAsync(orderId, cancellationToken);
+            if (o is null)
+            {
+                continue;
+            }
+
+            all.AddRange(ProjectMerchantOrderViews(o, shopId));
+        }
+
+        IEnumerable<MerchantOrderView> filtered = all;
+        if (!string.IsNullOrWhiteSpace(orderStatus))
+        {
+            filtered = filtered.Where(x => string.Equals(x.OrderStatus, orderStatus.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(subOrderStatus))
+        {
+            filtered = filtered.Where(x => string.Equals(x.SubOrderStatus, subOrderStatus.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(productId))
+        {
+            var pid = productId.Trim();
+            filtered = filtered.Where(x => x.Lines.Any(l => string.Equals(l.ProductId, pid, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(skuId))
+        {
+            var sid = skuId.Trim();
+            filtered = filtered.Where(x => x.Lines.Any(l => string.Equals(l.SkuId, sid, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        if (from.HasValue)
+        {
+            filtered = filtered.Where(x => x.CreatedAt >= from.Value);
+        }
+
+        if (to.HasValue)
+        {
+            filtered = filtered.Where(x => x.CreatedAt <= to.Value);
+        }
+
+        var q = new PageQuery(page, pageSize);
+        var ordered = filtered.OrderByDescending(x => x.CreatedAt).ToList();
+        var total = ordered.Count;
+        var pageItems = ordered.Skip((q.SafePage - 1) * q.SafePageSize).Take(q.SafePageSize).ToList();
+        var data = new PagedResult<MerchantOrderView>(pageItems, q.SafePage, q.SafePageSize, total);
+        return Ok(new ApiResponse<PagedResult<MerchantOrderView>>(true, data, null));
+    }
+
+    private static List<MerchantOrderView> ProjectMerchantOrderViews(Order order, string shopId)
+    {
+        return order.SubOrders
+            .Where(x => string.Equals(x.ShopId, shopId, StringComparison.OrdinalIgnoreCase))
+            .Select(x => new MerchantOrderView(
+                OrderId: order.Id,
+                ShopId: x.ShopId,
+                UserId: order.UserId,
+                OrderStatus: order.Status,
+                CreatedAt: order.CreatedAt,
+                UpdatedAt: order.UpdatedAt,
+                ShopSubtotal: x.Subtotal,
+                SubOrderId: x.Id,
+                SubOrderStatus: x.FulfillmentStatus,
+                Lines: x.Lines.ToList()))
+            .ToList();
     }
 
     private static (string ProductId, int Quantity) SummarizeForEvent(Order order)

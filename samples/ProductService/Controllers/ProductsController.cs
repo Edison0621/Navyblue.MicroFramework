@@ -18,6 +18,6 @@ public sealed class ProductsController : ControllerBase
             InStock = true
         };
 
-        return Ok(product);
+        return Ok(new ApiResponse<ProductDto>(true, product, null));
     }
 }

@@ -37,6 +37,21 @@ builder.AddDaprMicroFramework(options =>
         client.InvocationTimeoutSeconds = 3;
         client.InvocationMaxRetries = 2;
     }, "productservice", "productservice-canary");
+    options.AddServiceClient(typeof(IInventoryService), client =>
+    {
+        client.InvocationTimeoutSeconds = 3;
+        client.InvocationMaxRetries = 1;
+    }, "inventoryservice");
+    options.AddServiceClient(typeof(IAuditService), client =>
+    {
+        client.InvocationTimeoutSeconds = 3;
+        client.InvocationMaxRetries = 1;
+    }, "auditservice");
+    options.AddServiceClient(typeof(IPromotionService), client =>
+    {
+        client.InvocationTimeoutSeconds = 3;
+        client.InvocationMaxRetries = 1;
+    }, "promotionservice");
     options.AddStateStore(typeof(Order), "statestore");
 });
 

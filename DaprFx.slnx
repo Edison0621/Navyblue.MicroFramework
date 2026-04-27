@@ -1,8 +1,17 @@
 <Solution>
   <Folder Name="/samples/">
+    <Project Path="samples/AuthService/AuthService.csproj" />
+    <Project Path="samples/AuditService/AuditService.csproj" />
+    <Project Path="samples/CatalogService/CatalogService.csproj" />
+    <Project Path="samples/GatewayService/GatewayService.csproj" />
+    <Project Path="samples/InventoryService/InventoryService.csproj" />
+    <Project Path="samples/JobService/JobService.csproj" />
+    <Project Path="samples/NotificationService/NotificationService.csproj" />
     <Project Path="samples/OrderService/OrderService.csproj" />
     <Project Path="samples/OpsPortal/OpsPortal.csproj" />
+    <Project Path="samples/PromotionService/PromotionService.csproj" />
     <Project Path="samples/ProductService/ProductService.csproj" />
+    <Project Path="samples/UserService/UserService.csproj" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/DaprFx.Configuration/DaprFx.Configuration.csproj" />

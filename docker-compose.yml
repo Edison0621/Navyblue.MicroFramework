@@ -34,6 +34,7 @@ services:
       - Demo__OtlpEndpoint=http://otel-collector:4317
     depends_on:
       - redis
+      - inventoryservice
       - otel-collector
 
   orderservice-dapr:
@@ -122,6 +123,312 @@ services:
       - productservice-canary
       - otel-collector
 
+  authservice:
+    image: authservice:latest
+    build:
+      context: .
+      dockerfile: samples/AuthService/Dockerfile
+    ports:
+      - "5004:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - Jwt__Issuer=DaprFx.AuthService
+      - Jwt__Audience=DaprFx.Services
+      - Jwt__SigningKey=DaprFx.Dev.Secret.Key.ChangeMe
+      - Jwt__ExpiresMinutes=60
+    depends_on:
+      - redis
+      - otel-collector
+
+  authservice-dapr:
+    image: daprio/daprd:latest
+    command:
+      - ./daprd
+      - --app-id
+      - authservice
+      - --app-port
+      - "8080"
+      - --dapr-http-port
+      - "3504"
+      - --resources-path
+      - /components
+    network_mode: service:authservice
+    volumes:
+      - ./components:/components
+    depends_on:
+      - redis
+      - authservice
+      - otel-collector
+
+  userservice:
+    image: userservice:latest
+    build:
+      context: .
+      dockerfile: samples/UserService/Dockerfile
+    ports:
+      - "5005:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    depends_on:
+      - redis
+      - otel-collector
+
+  userservice-dapr:
+    image: daprio/daprd:latest
+    command:
+      - ./daprd
+      - --app-id
+      - userservice
+      - --app-port
+      - "8080"
+      - --dapr-http-port
+      - "3505"
+      - --resources-path
+      - /components
+    network_mode: service:userservice
+    volumes:
+      - ./components:/components
+    depends_on:
+      - redis
+      - userservice
+      - otel-collector
+
+  gatewayservice:
+    image: gatewayservice:latest
+    build:
+      context: .
+      dockerfile: samples/GatewayService/Dockerfile
+    ports:
+      - "5006:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - Jwt__Issuer=DaprFx.AuthService
+      - Jwt__Audience=DaprFx.Services
+      - Jwt__SigningKey=DaprFx.Dev.Secret.Key.ChangeMe
+    depends_on:
+      - authservice
+      - userservice
+      - orderservice
+      - otel-collector
+
+  gatewayservice-dapr:
+    image: daprio/daprd:latest
+    command:
+      - ./daprd
+      - --app-id
+      - gatewayservice
+      - --app-port
+      - "8080"
+      - --dapr-http-port
+      - "3506"
+      - --resources-path
+      - /components
+    network_mode: service:gatewayservice
+    volumes:
+      - ./components:/components
+    depends_on:
+      - redis
+      - gatewayservice
+      - otel-collector
+
+  auditservice:
+    image: auditservice:latest
+    build:
+      context: .
+      dockerfile: samples/AuditService/Dockerfile
+    ports:
+      - "5007:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    depends_on:
+      - redis
+      - otel-collector
+
+  auditservice-dapr:
+    image: daprio/daprd:latest
+    command:
+      - ./daprd
+      - --app-id
+      - auditservice
+      - --app-port
+      - "8080"
+      - --dapr-http-port
+      - "3507"
+      - --resources-path
+      - /components
+    network_mode: service:auditservice
+    volumes:
+      - ./components:/components
+    depends_on:
+      - redis
+      - auditservice
+      - otel-collector
+
+  catalogservice:
+    image: catalogservice:latest
+    build:
+      context: .
+      dockerfile: samples/CatalogService/Dockerfile
+    ports:
+      - "5008:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    depends_on:
+      - redis
+      - otel-collector
+
+  catalogservice-dapr:
+    image: daprio/daprd:latest
+    command:
+      - ./daprd
+      - --app-id
+      - catalogservice
+      - --app-port
+      - "8080"
+      - --dapr-http-port
+      - "3508"
+      - --resources-path
+      - /components
+    network_mode: service:catalogservice
+    volumes:
+      - ./components:/components
+    depends_on:
+      - redis
+      - catalogservice
+      - otel-collector
+
+  inventoryservice:
+    image: inventoryservice:latest
+    build:
+      context: .
+      dockerfile: samples/InventoryService/Dockerfile
+    ports:
+      - "5009:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    depends_on:
+      - redis
+      - otel-collector
+
+  inventoryservice-dapr:
+    image: daprio/daprd:latest
+    command:
+      - ./daprd
+      - --app-id
+      - inventoryservice
+      - --app-port
+      - "8080"
+      - --dapr-http-port
+      - "3509"
+      - --resources-path
+      - /components
+    network_mode: service:inventoryservice
+    volumes:
+      - ./components:/components
+    depends_on:
+      - redis
+      - inventoryservice
+      - otel-collector
+
+  notificationservice:
+    image: notificationservice:latest
+    build:
+      context: .
+      dockerfile: samples/NotificationService/Dockerfile
+    ports:
+      - "5010:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    depends_on:
+      - redis
+      - otel-collector
+
+  notificationservice-dapr:
+    image: daprio/daprd:latest
+    command:
+      - ./daprd
+      - --app-id
+      - notificationservice
+      - --app-port
+      - "8080"
+      - --dapr-http-port
+      - "3510"
+      - --resources-path
+      - /components
+    network_mode: service:notificationservice
+    volumes:
+      - ./components:/components
+    depends_on:
+      - redis
+      - notificationservice
+      - otel-collector
+
+  jobservice:
+    image: jobservice:latest
+    build:
+      context: .
+      dockerfile: samples/JobService/Dockerfile
+    ports:
+      - "5011:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    depends_on:
+      - redis
+      - otel-collector
+
+  jobservice-dapr:
+    image: daprio/daprd:latest
+    command:
+      - ./daprd
+      - --app-id
+      - jobservice
+      - --app-port
+      - "8080"
+      - --dapr-http-port
+      - "3511"
+      - --resources-path
+      - /components
+    network_mode: service:jobservice
+    volumes:
+      - ./components:/components
+    depends_on:
+      - redis
+      - jobservice
+      - otel-collector
+
+  promotionservice:
+    image: promotionservice:latest
+    build:
+      context: .
+      dockerfile: samples/PromotionService/Dockerfile
+    ports:
+      - "5012:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    depends_on:
+      - redis
+      - otel-collector
+
+  promotionservice-dapr:
+    image: daprio/daprd:latest
+    command:
+      - ./daprd
+      - --app-id
+      - promotionservice
+      - --app-port
+      - "8080"
+      - --dapr-http-port
+      - "3512"
+      - --resources-path
+      - /components
+    network_mode: service:promotionservice
+    volumes:
+      - ./components:/components
+    depends_on:
+      - redis
+      - promotionservice
+      - otel-collector
+
   opsportal:
     image: opsportal:latest
     build:
@@ -137,10 +444,37 @@ services:
       - OpsPortal__Services__1__BaseUrl=http://productservice:8080
       - OpsPortal__Services__2__Name=ProductService Canary
       - OpsPortal__Services__2__BaseUrl=http://productservice-canary:8080
+      - OpsPortal__Services__3__Name=AuthService
+      - OpsPortal__Services__3__BaseUrl=http://authservice:8080
+      - OpsPortal__Services__4__Name=UserService
+      - OpsPortal__Services__4__BaseUrl=http://userservice:8080
+      - OpsPortal__Services__5__Name=GatewayService
+      - OpsPortal__Services__5__BaseUrl=http://gatewayservice:8080
+      - OpsPortal__Services__6__Name=AuditService
+      - OpsPortal__Services__6__BaseUrl=http://auditservice:8080
+      - OpsPortal__Services__7__Name=CatalogService
+      - OpsPortal__Services__7__BaseUrl=http://catalogservice:8080
+      - OpsPortal__Services__8__Name=InventoryService
+      - OpsPortal__Services__8__BaseUrl=http://inventoryservice:8080
+      - OpsPortal__Services__9__Name=NotificationService
+      - OpsPortal__Services__9__BaseUrl=http://notificationservice:8080
+      - OpsPortal__Services__10__Name=JobService
+      - OpsPortal__Services__10__BaseUrl=http://jobservice:8080
+      - OpsPortal__Services__11__Name=PromotionService
+      - OpsPortal__Services__11__BaseUrl=http://promotionservice:8080
     depends_on:
       - orderservice
       - productservice
       - productservice-canary
+      - authservice
+      - userservice
+      - gatewayservice
+      - auditservice
+      - catalogservice
+      - inventoryservice
+      - notificationservice
+      - jobservice
+      - promotionservice
 
   opsportal-dapr:
     image: daprio/daprd:latest

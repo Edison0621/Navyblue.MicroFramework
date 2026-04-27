@@ -1,7 +1,9 @@
 @host = http://localhost:5001
+@token = paste-jwt-here
 
-### Replace shopping cart
-PUT {{host}}/api/carts/demo-user
+### Replace my cart (requires Authorization: Bearer {{token}})
+PUT {{host}}/api/carts/me
+Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
@@ -11,54 +13,64 @@ Content-Type: application/json
   ]
 }
 
-### Checkout cart (clears cart on success)
+### Checkout cart (requires JWT; AddressId = saved address GUID from UserService)
 POST {{host}}/api/orders/checkout
+Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "userId": "demo-user",
-  "promoCode": null
+  "promoCode": null,
+  "addressId": "00000000-0000-0000-0000-000000000001"
 }
 
 ### Simulate pay (order must be AwaitingPayment)
 POST {{host}}/api/orders/{orderId}/pay
+Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
   "idempotencyKey": "http-demo-1"
 }
 
-### Expire unpaid orders (ops)
+### Expire unpaid orders (ops — no JWT)
 POST {{host}}/api/orders/ops/expire-awaiting-payments?maxAgeMinutes=30
 
 ### Same via JobService (localhost 5011, configure Jobs:OrderServiceBaseUrl)
 # POST http://localhost:5011/api/jobs/run/expire-awaiting-payments?maxAgeMinutes=30
 
-### List orders for user (newest first)
-GET {{host}}/api/orders/by-user/demo-user?take=10
+### List my orders (requires JWT)
+GET {{host}}/api/orders/me?take=10
+Authorization: Bearer {{token}}
+
+### List orders for user (admin JWT only)
+# GET {{host}}/api/orders/by-user/{userId}?take=10
+# Authorization: Bearer {{adminToken}}
 
 ### Sub-order ship then deliver (paste orderId + subOrderId from GET order or checkout response)
 # POST {{host}}/api/orders/{orderId}/sub-orders/{subOrderId}/ship
+# Authorization: Bearer {{token}}
 # Content-Type: application/json
 #
 # { "trackingNumber": "SF123" }
 #
 # POST {{host}}/api/orders/{orderId}/sub-orders/{subOrderId}/deliver
+# Authorization: Bearer {{token}}
 
 ### Cancel (only while sub-order still PendingShipment)
 # POST {{host}}/api/orders/{orderId}/sub-orders/{subOrderId}/cancel
 # POST {{host}}/api/orders/{orderId}/cancel
 
-### Legacy single-SKU create (optional userId for index)
+### Single-SKU create (requires JWT; user from token)
 POST {{host}}/api/orders
+Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
   "productId": "p-100",
   "quantity": 2,
-  "promoCode": null,
-  "userId": "demo-user"
+  "promoCode": null
 }
 
-### Get order (paste id from create/checkout response)
-# GET {{host}}/api/orders/{orderId}
+### Get order (paste id; must be owner or admin)
+GET {{host}}/api/orders/{orderId}
+Authorization: Bearer {{token}}

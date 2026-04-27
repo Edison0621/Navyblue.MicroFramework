@@ -1,11 +1,38 @@
+using System.Text;
 using DaprFx.Core;
+using OrderService;
 using DaprFx.Hosting;
 using DaprFx.Operations;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 using OrderService.Abstractions;
 using OrderService.Models;
 using OrderService.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+var jwtOptions = builder.Configuration.GetSection("Jwt").Get<OrderServiceJwtOptions>() ?? new OrderServiceJwtOptions();
+builder.Services.AddSingleton(jwtOptions);
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateIssuerSigningKey = true,
+            ValidateLifetime = true,
+            ValidIssuer = jwtOptions.Issuer,
+            ValidAudience = jwtOptions.Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.SigningKey)),
+            ClockSkew = TimeSpan.FromSeconds(30)
+        };
+    });
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminOnly", policy => policy.RequireRole("admin"));
+});
 
 builder.Services.AddOpenApi();
 builder.Services.AddSingleton<EventAuditStore>();
@@ -57,6 +84,11 @@ builder.AddDaprMicroFramework(options =>
         client.InvocationTimeoutSeconds = 3;
         client.InvocationMaxRetries = 2;
     }, "catalogservice");
+    options.AddServiceClient(typeof(IUserService), client =>
+    {
+        client.InvocationTimeoutSeconds = 3;
+        client.InvocationMaxRetries = 1;
+    }, "userservice");
     options.AddStateStore(typeof(Order), "statestore");
     options.AddStateStore(typeof(ShoppingCart), "statestore");
     options.AddStateStore(typeof(UserOrderIndex), "statestore");
@@ -70,6 +102,7 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
+app.UseAuthentication();
 app.UseAuthorization();
 app.UseDaprFx();
 app.MapDaprFxOperationsDashboard();

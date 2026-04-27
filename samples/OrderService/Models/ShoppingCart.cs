@@ -26,6 +26,6 @@ public sealed class CartLineDto
 
 public sealed class CheckoutCartRequest
 {
-    public string UserId { get; set; } = string.Empty;
     public string? PromoCode { get; set; }
+    public Guid? AddressId { get; set; }
 }

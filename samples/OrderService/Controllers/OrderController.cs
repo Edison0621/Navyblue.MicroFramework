@@ -1,4 +1,5 @@
 using DaprFx.Core;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OrderService.Abstractions;
 using OrderService.Models;
@@ -8,6 +9,7 @@ namespace OrderService.Controllers;
 
 [ApiController]
 [Route("api/orders")]
+[Authorize]
 public sealed class OrderController(
     IEventBus eventBus,
     IConfiguration configuration,
@@ -20,6 +22,7 @@ public sealed class OrderController(
     IPromotionService promotionService,
     IInventoryService inventoryService,
     IAuditService auditService,
+    IUserService userService,
     ILogger<OrderController> logger) : ControllerBase
 {
     private readonly IEventBus _eventBus = eventBus;
@@ -33,11 +36,18 @@ public sealed class OrderController(
     private readonly IPromotionService _promotionService = promotionService;
     private readonly IInventoryService _inventoryService = inventoryService;
     private readonly IAuditService _auditService = auditService;
+    private readonly IUserService _userService = userService;
     private readonly ILogger<OrderController> _logger = logger;
 
     [HttpPost]
     public async Task<IActionResult> CreateOrder([FromBody] CreateOrderRequest request, CancellationToken cancellationToken)
     {
+        var callerUserId = OrderAccess.GetUserId(User);
+        if (callerUserId is null)
+        {
+            return Unauthorized(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Unauthorized, "Missing user identity.")));
+        }
+
         if (request.Quantity <= 0)
         {
             return BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidQuantity, "Quantity must be greater than zero.")));
@@ -51,7 +61,7 @@ public sealed class OrderController(
 
         var order = new Order
         {
-            UserId = string.IsNullOrWhiteSpace(request.UserId) ? null : request.UserId.Trim(),
+            UserId = callerUserId,
             PromoCode = request.PromoCode,
             Status = OrderStatus.Pending,
             SubOrders = BuildSubOrders([(resolution.Line!, resolution.ShopId)])
@@ -63,12 +73,34 @@ public sealed class OrderController(
     [HttpPost("checkout")]
     public async Task<IActionResult> CheckoutFromCart([FromBody] CheckoutCartRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.UserId))
+        var userId = OrderAccess.GetUserId(User);
+        if (userId is null)
         {
-            return BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidUserId, "UserId is required.")));
+            return Unauthorized(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Unauthorized, "Missing user identity.")));
         }
 
-        var userId = request.UserId.Trim();
+        if (request.AddressId is null)
+        {
+            return BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidAddress, "AddressId is required for checkout.")));
+        }
+
+        ApiResponse<UserAddressSnapshotDto>? addrResp;
+        try
+        {
+            addrResp = await _userService.GetUserAddressAsync(userId, request.AddressId.Value.ToString("D"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Address lookup via UserService failed for user {UserId}", userId);
+            return BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidAddress, "Could not load shipping address.")));
+        }
+
+        if (addrResp is not { Success: true, Data: not null })
+        {
+            return BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidAddress, "Address not found for this user.")));
+        }
+
+        var ship = addrResp.Data;
         var cart = await _cartStateStore.GetAsync(CartController.BuildCartStateKey(userId), cancellationToken);
         var merged = CartController.MergeLines(cart?.Lines ?? []);
         if (merged.Count == 0)
@@ -103,7 +135,12 @@ public sealed class OrderController(
             UserId = userId,
             PromoCode = request.PromoCode,
             Status = OrderStatus.Pending,
-            SubOrders = BuildSubOrders(pairs)
+            SubOrders = BuildSubOrders(pairs),
+            AddressId = request.AddressId,
+            ShipToReceiverName = ship.ReceiverName,
+            ShipToPhone = ship.Phone,
+            ShipToRegion = ship.Region,
+            ShipToDetail = ship.Detail
         };
 
         var actionResult = await FinalizeOrderAsync(order, primaryProduct: null, cancellationToken);
@@ -115,7 +152,20 @@ public sealed class OrderController(
         return actionResult;
     }
 
+    [HttpGet("me")]
+    public async Task<IActionResult> ListMyOrders([FromQuery] int take = 20, CancellationToken cancellationToken = default)
+    {
+        var userId = OrderAccess.GetUserId(User);
+        if (userId is null)
+        {
+            return Unauthorized(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Unauthorized, "Missing user identity.")));
+        }
+
+        return await ListOrdersForUserAsync(userId, take, cancellationToken);
+    }
+
     [HttpGet("by-user/{userId}")]
+    [Authorize(Policy = "AdminOnly")]
     public async Task<IActionResult> ListOrdersByUser(string userId, [FromQuery] int take = 20, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(userId))
@@ -123,8 +173,30 @@ public sealed class OrderController(
             return BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidUserId, "UserId is required.")));
         }
 
+        return await ListOrdersForUserAsync(userId.Trim(), take, cancellationToken);
+    }
+
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetOrderById(string id, CancellationToken cancellationToken)
+    {
+        var order = await _stateStore.GetAsync(id, cancellationToken);
+        if (order is null)
+        {
+            return NotFound(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.NotFound, "Order not found.")));
+        }
+
+        if (!OrderAccess.CanAccessOrder(User, order))
+        {
+            return OrderAccess.Forbidden();
+        }
+
+        return Ok(new ApiResponse<Order>(true, order, null));
+    }
+
+    private async Task<IActionResult> ListOrdersForUserAsync(string userId, int take, CancellationToken cancellationToken)
+    {
         var safeTake = Math.Clamp(take, 1, 100);
-        var key = UserOrderIndex.StateKey(userId.Trim());
+        var key = UserOrderIndex.StateKey(userId);
         var index = await _userOrderIndexStore.GetAsync(key, cancellationToken);
         if (index?.OrderIds is null || index.OrderIds.Count == 0)
         {
@@ -142,15 +214,6 @@ public sealed class OrderController(
         }
 
         return Ok(new ApiResponse<IReadOnlyList<Order>>(true, orders, null));
-    }
-
-    [HttpGet("{id}")]
-    public async Task<IActionResult> GetOrderById(string id, CancellationToken cancellationToken)
-    {
-        var order = await _stateStore.GetAsync(id, cancellationToken);
-        return order is null
-            ? NotFound(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.NotFound, "Order not found.")))
-            : Ok(new ApiResponse<Order>(true, order, null));
     }
 
     private async Task<LineResolution> ResolveLineAsync(string productId, int quantity, CancellationToken cancellationToken)

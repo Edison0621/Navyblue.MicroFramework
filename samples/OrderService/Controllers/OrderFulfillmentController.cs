@@ -1,4 +1,5 @@
 using DaprFx.Core;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OrderService.Models;
 
@@ -6,6 +7,7 @@ namespace OrderService.Controllers;
 
 [ApiController]
 [Route("api/orders")]
+[Authorize]
 public sealed class OrderFulfillmentController(
     IEventBus eventBus,
     IStateStore<Order> stateStore,

@@ -135,17 +135,26 @@ curl -X PUT http://localhost:5008/api/catalog/items/p-100 -H "Content-Type: appl
 curl -X PUT http://localhost:5008/api/catalog/items/p-200 -H "Content-Type: application/json" -d "{\"name\":\"Demo B\",\"price\":80,\"isActive\":true,\"shopId\":\"shop-west\"}"
 ```
 
-3. **购物车结账（多店铺主单 + 子单）**：写入购物车后结账，成功后会清空该用户购物车。订单会先进入 **`AwaitingPayment`**（库存已预占），`paymentDueAt` 由配置 `Order:PaymentTimeoutMinutes`（默认 30 分钟）决定。
+3. **登录、收货地址、购物车结账（Sprint B）**：购物车与结账从 JWT 的 `NameIdentifier` 绑定用户，**不可**再在路径或 body 里冒充他人 `userId`。结账必须传 **`addressId`**，OrderService 会通过 Dapr 调用 UserService 拉取地址并写入订单快照（`shipTo*` 等字段）。以下经 **Gateway**（`5006`）演示；请先将 `ACCESS_TOKEN` 换为登录返回的 `data.accessToken`。
 
 ```bash
-curl -X PUT http://localhost:5001/api/carts/demo-user -H "Content-Type: application/json" -d "{\"lines\":[{\"productId\":\"p-100\",\"quantity\":1},{\"productId\":\"p-200\",\"quantity\":2}]}"
-curl -X POST http://localhost:5001/api/orders/checkout -H "Content-Type: application/json" -d "{\"userId\":\"demo-user\",\"promoCode\":\"WELCOME10\"}"
+curl -X POST http://localhost:5005/api/users/seed
+curl -s -X POST http://localhost:5006/api/gw/auth/login -H "Content-Type: application/json" -d "{\"account\":\"demo\",\"password\":\"demo123\"}"
+# 从上一行 JSON 取出 data.accessToken 赋给 ACCESS_TOKEN
+
+curl -X POST http://localhost:5006/api/gw/users/me/addresses -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"receiverName\":\"张三\",\"phone\":\"13800000000\",\"region\":\"上海市\",\"detail\":\"XX路1号\",\"isDefault\":true}"
+# 从响应 data.id 得到 ADDRESS_ID（UUID）
+
+curl -X PUT http://localhost:5006/api/gw/carts/me -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"lines\":[{\"productId\":\"p-100\",\"quantity\":1},{\"productId\":\"p-200\",\"quantity\":2}]}"
+curl -X POST http://localhost:5006/api/gw/orders/checkout -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"promoCode\":\"WELCOME10\",\"addressId\":\"ADDRESS_ID\"}"
 ```
 
-3b. **模拟支付（Sprint A）**：将响应中的 `data.order.id` 代入 `orderId`。可选请求体 `idempotencyKey` 防止重复支付。
+成功后会清空当前用户购物车。订单会先进入 **`AwaitingPayment`**（库存已预占），`paymentDueAt` 由 `Order:PaymentTimeoutMinutes`（默认 30 分钟）决定。
+
+3b. **模拟支付（Sprint A）**：将响应中的订单 `id` 代入 `orderId`。需携带同一用户的 Bearer；可选 `idempotencyKey`。
 
 ```bash
-curl -X POST http://localhost:5001/api/orders/<orderId>/pay -H "Content-Type: application/json" -d "{\"idempotencyKey\":\"demo-pay-1\"}"
+curl -X POST http://localhost:5006/api/gw/orders/<orderId>/pay -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"idempotencyKey\":\"demo-pay-1\"}"
 ```
 
 超时关单（释放库存、主单 `Cancelled`，并发布 `order.cancelled`）：
@@ -160,24 +169,30 @@ curl -X POST "http://localhost:5001/api/orders/ops/expire-awaiting-payments?maxA
 curl -X POST "http://localhost:5011/api/jobs/run/expire-awaiting-payments?maxAgeMinutes=30"
 ```
 
-4. **单笔下单（兼容旧示例）**：可选 `userId`，写入后可通过「按用户列单」查到。
+4. **单笔下单**：需 JWT，`userId` 以令牌为准（body 中的 `userId` 已忽略）。
 
 ```bash
-curl -X POST http://localhost:5001/api/orders -H "Content-Type: application/json" -d "{\"productId\":\"p-100\",\"quantity\":2,\"promoCode\":\"WELCOME10\",\"userId\":\"demo-user\"}"
+curl -X POST http://localhost:5006/api/gw/orders -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"productId\":\"p-100\",\"quantity\":2,\"promoCode\":\"WELCOME10\"}"
 ```
 
 订单返回中含主单 `Status`（`Pending` / **`AwaitingPayment`** / `Confirmed` / `Completed` / `Cancelled` / `Failed`）、`paymentDueAt` / `paidAt`、失败原因（失败时）、金额（`OriginalAmount` / `DiscountAmount` / `FinalAmount`），以及 `subOrders`（按 `shopId` 拆分；子单 `fulfillmentStatus`：`PendingShipment` / `Shipped` / `Delivered` / `Cancelled`）。
 
-查询单笔：
+查询单笔（须为订单所有者或 **admin** JWT）：
 
 ```bash
-curl http://localhost:5001/api/orders/<orderId>
+curl http://localhost:5006/api/gw/orders/<orderId> -H "Authorization: Bearer ACCESS_TOKEN"
 ```
 
-按用户列出最近订单（`take` 默认 20，最大 100）：
+**我的订单**（`take` 默认 20，最大 100）：
 
 ```bash
-curl "http://localhost:5001/api/orders/by-user/demo-user?take=10"
+curl "http://localhost:5006/api/gw/orders/me?take=10" -H "Authorization: Bearer ACCESS_TOKEN"
+```
+
+按指定用户列单（仅 **admin** 网关策略）：
+
+```bash
+curl "http://localhost:5006/api/gw/orders/by-user/<userId>?take=10" -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
 ```
 
 5. 查看事件处理结果（含本机订阅的 `order.created` / **`order.paid`** / `order.cancelled` / `order.completed` 等 topic 记录；下游 Notification/Audit 亦会消费对应 topic）：
@@ -195,8 +210,8 @@ curl http://localhost:5001/demo/config
 7. **子单履约（示例）**：主单须先为 **`Confirmed`（已模拟支付）**，每个子单依次 `PendingShipment` → `Shipped` → `Delivered`；全部子单送达后主单变为 `Completed`。将 `order.id` 与各 `order.subOrders[i].id` 代入：
 
 ```bash
-curl -X POST http://localhost:5001/api/orders/<orderId>/sub-orders/<subOrderId>/ship -H "Content-Type: application/json" -d "{\"trackingNumber\":\"SF123\"}"
-curl -X POST http://localhost:5001/api/orders/<orderId>/sub-orders/<subOrderId>/deliver
+curl -X POST http://localhost:5006/api/gw/orders/<orderId>/sub-orders/<subOrderId>/ship -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"trackingNumber\":\"SF123\"}"
+curl -X POST http://localhost:5006/api/gw/orders/<orderId>/sub-orders/<subOrderId>/deliver -H "Authorization: Bearer ACCESS_TOKEN"
 ```
 
 （第二个店铺子单重复上述两条，直到主单 `Status` 为 `Completed`。）
@@ -204,8 +219,8 @@ curl -X POST http://localhost:5001/api/orders/<orderId>/sub-orders/<subOrderId>/
 8. **取消（未发货 / 未付款）**：整单取消要求主单为 **`AwaitingPayment` 或 `Confirmed`**，且**所有**子单仍为 `PendingShipment`，会按行调用库存 `release`。单个子单取消仅释放该子单行；若全部子单被取消则主单变为 `Cancelled`。已发货/已送达的主单或子单不可取消（需走售后流程时再扩展）。
 
 ```bash
-curl -X POST http://localhost:5001/api/orders/<orderId>/sub-orders/<subOrderId>/cancel
-curl -X POST http://localhost:5001/api/orders/<orderId>/cancel
+curl -X POST http://localhost:5006/api/gw/orders/<orderId>/sub-orders/<subOrderId>/cancel -H "Authorization: Bearer ACCESS_TOKEN"
+curl -X POST http://localhost:5006/api/gw/orders/<orderId>/cancel -H "Authorization: Bearer ACCESS_TOKEN"
 ```
 
 ## 常用运维/排障命令

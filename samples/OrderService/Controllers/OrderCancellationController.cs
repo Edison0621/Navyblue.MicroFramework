@@ -1,4 +1,5 @@
 using DaprFx.Core;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OrderService.Abstractions;
 using OrderService.Models;
@@ -21,6 +22,7 @@ public sealed class OrderCancellationController(
     private readonly IInventoryService _inventoryService = inventoryService;
     private readonly ILogger<OrderCancellationController> _logger = logger;
 
+    [Authorize]
     [HttpPost("{orderId}/cancel")]
     public async Task<IActionResult> CancelWholeOrder(string orderId, CancellationToken cancellationToken)
     {
@@ -28,6 +30,11 @@ public sealed class OrderCancellationController(
         if (order is null)
         {
             return NotFound(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.NotFound, "Order not found.")));
+        }
+
+        if (!OrderAccess.CanAccessOrder(User, order))
+        {
+            return OrderAccess.Forbidden();
         }
 
         if (order.Status == OrderStatus.Cancelled)
@@ -78,6 +85,7 @@ public sealed class OrderCancellationController(
         return Ok(new ApiResponse<Order>(true, order, null));
     }
 
+    [Authorize]
     [HttpPost("{orderId}/sub-orders/{subOrderId}/cancel")]
     public async Task<IActionResult> CancelSubOrder(string orderId, string subOrderId, CancellationToken cancellationToken)
     {
@@ -85,6 +93,11 @@ public sealed class OrderCancellationController(
         if (order is null)
         {
             return NotFound(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.NotFound, "Order not found.")));
+        }
+
+        if (!OrderAccess.CanAccessOrder(User, order))
+        {
+            return OrderAccess.Forbidden();
         }
 
         if (order.Status == OrderStatus.Cancelled)

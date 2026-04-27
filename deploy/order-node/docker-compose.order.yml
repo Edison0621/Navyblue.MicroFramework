@@ -27,6 +27,9 @@ services:
       - Demo__OtlpEndpoint=${OTLP_ENDPOINT}
       - Consul__Address=http://${CONSUL_HOST}:8500
       - Redis__Connection=${REDIS_HOST}:6379
+      - Jwt__Issuer=DaprFx.AuthService
+      - Jwt__Audience=DaprFx.Services
+      - Jwt__SigningKey=DaprFx.Dev.Secret.Key.ChangeMe
     labels:
       - SERVICE_NAME=orderservice
       - SERVICE_8080_NAME=orderservice

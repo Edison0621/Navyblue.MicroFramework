@@ -32,11 +32,15 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - Demo__OtlpEndpoint=http://otel-collector:4317
+      - Jwt__Issuer=DaprFx.AuthService
+      - Jwt__Audience=DaprFx.Services
+      - Jwt__SigningKey=DaprFx.Dev.Secret.Key.ChangeMe
     depends_on:
       - redis
       - inventoryservice
       - catalogservice
       - promotionservice
+      - userservice
       - otel-collector
 
   orderservice-dapr:
@@ -171,6 +175,9 @@ services:
       - "5005:8080"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
+      - Jwt__Issuer=DaprFx.AuthService
+      - Jwt__Audience=DaprFx.Services
+      - Jwt__SigningKey=DaprFx.Dev.Secret.Key.ChangeMe
     depends_on:
       - redis
       - otel-collector

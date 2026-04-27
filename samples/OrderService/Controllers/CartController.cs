@@ -1,11 +1,14 @@
 using DaprFx.Core;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OrderService.Models;
+using OrderService.Services;
 
 namespace OrderService.Controllers;
 
 [ApiController]
 [Route("api/carts")]
+[Authorize]
 public sealed class CartController(IStateStore<ShoppingCart> cartStateStore) : ControllerBase
 {
     private readonly IStateStore<ShoppingCart> _cartStateStore = cartStateStore;
@@ -21,31 +24,33 @@ public sealed class CartController(IStateStore<ShoppingCart> cartStateStore) : C
             .ToList();
     }
 
-    [HttpGet("{userId}")]
-    public async Task<IActionResult> GetCart(string userId, CancellationToken cancellationToken)
+    [HttpGet("me")]
+    public async Task<IActionResult> GetMyCart(CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(userId))
+        var userId = OrderAccess.GetUserId(User);
+        if (userId is null)
         {
-            return BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidUserId, "UserId is required.")));
+            return Unauthorized(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Unauthorized, "Missing user identity.")));
         }
 
-        var key = BuildCartStateKey(userId.Trim());
+        var key = BuildCartStateKey(userId);
         var cart = await _cartStateStore.GetAsync(key, cancellationToken);
         if (cart is null)
         {
-            cart = new ShoppingCart { UserId = userId.Trim(), Lines = [] };
+            cart = new ShoppingCart { UserId = userId, Lines = [] };
         }
 
         cart.Lines = MergeLines(cart.Lines);
         return Ok(new ApiResponse<ShoppingCart>(true, cart, null));
     }
 
-    [HttpPut("{userId}")]
-    public async Task<IActionResult> ReplaceCart(string userId, [FromBody] ReplaceCartRequest request, CancellationToken cancellationToken)
+    [HttpPut("me")]
+    public async Task<IActionResult> ReplaceMyCart([FromBody] ReplaceCartRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(userId))
+        var userId = OrderAccess.GetUserId(User);
+        if (userId is null)
         {
-            return BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidUserId, "UserId is required.")));
+            return Unauthorized(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Unauthorized, "Missing user identity.")));
         }
 
         var lines = (request.Lines ?? [])
@@ -55,11 +60,11 @@ public sealed class CartController(IStateStore<ShoppingCart> cartStateStore) : C
         var merged = MergeLines(lines);
         var cart = new ShoppingCart
         {
-            UserId = userId.Trim(),
+            UserId = userId,
             Lines = merged,
             UpdatedAt = DateTimeOffset.UtcNow
         };
-        await _cartStateStore.SaveAsync(BuildCartStateKey(userId.Trim()), cart, cancellationToken);
+        await _cartStateStore.SaveAsync(BuildCartStateKey(userId), cart, cancellationToken);
         return Ok(new ApiResponse<ShoppingCart>(true, cart, null));
     }
 }

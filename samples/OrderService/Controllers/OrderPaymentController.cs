@@ -1,4 +1,5 @@
 using DaprFx.Core;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OrderService.Abstractions;
 using OrderService.Models;
@@ -23,6 +24,7 @@ public sealed class OrderPaymentController(
     private readonly IInventoryService _inventoryService = inventoryService;
     private readonly ILogger<OrderPaymentController> _logger = logger;
 
+    [Authorize]
     [HttpPost("{orderId}/pay")]
     public async Task<IActionResult> SimulatePay(string orderId, [FromBody] SimulatePayRequest? request, CancellationToken cancellationToken)
     {
@@ -30,6 +32,11 @@ public sealed class OrderPaymentController(
         if (order is null)
         {
             return NotFound(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.NotFound, "Order not found.")));
+        }
+
+        if (!OrderAccess.CanAccessOrder(User, order))
+        {
+            return OrderAccess.Forbidden();
         }
 
         if (order.Status == OrderStatus.Confirmed)

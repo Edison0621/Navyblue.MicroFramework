@@ -126,17 +126,25 @@ curl -X PUT http://localhost:5008/api/catalog/items/p-100 -H "Content-Type: appl
 curl -X PUT http://localhost:5008/api/catalog/items/p-200 -H "Content-Type: application/json" -d "{\"name\":\"Demo B\",\"price\":80,\"isActive\":true,\"shopId\":\"shop-west\"}"
 ```
 
-3. **Cart checkout (main order + sub-orders per shop)** — replace the cart, then checkout; the cart state is cleared on success. The order starts in **`AwaitingPayment`** (inventory already reserved). `paymentDueAt` comes from `Order:PaymentTimeoutMinutes` (default **30**).
+3. **Login, shipping address, cart checkout (Sprint B)** — cart and checkout bind to the JWT `NameIdentifier`; you cannot impersonate another user via path or body. Checkout requires **`addressId`**; OrderService loads the address from UserService over Dapr and snapshots it on the order (`shipTo*` fields). Examples go through **Gateway** (`5006`). Set `ACCESS_TOKEN` from `data.accessToken` after login.
 
 ```bash
-curl -X PUT http://localhost:5001/api/carts/demo-user -H "Content-Type: application/json" -d "{\"lines\":[{\"productId\":\"p-100\",\"quantity\":1},{\"productId\":\"p-200\",\"quantity\":2}]}"
-curl -X POST http://localhost:5001/api/orders/checkout -H "Content-Type: application/json" -d "{\"userId\":\"demo-user\",\"promoCode\":\"WELCOME10\"}"
+curl -X POST http://localhost:5005/api/users/seed
+curl -s -X POST http://localhost:5006/api/gw/auth/login -H "Content-Type: application/json" -d "{\"account\":\"demo\",\"password\":\"demo123\"}"
+
+curl -X POST http://localhost:5006/api/gw/users/me/addresses -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"receiverName\":\"Zhang\",\"phone\":\"13800000000\",\"region\":\"Shanghai\",\"detail\":\"No.1 Demo Rd\",\"isDefault\":true}"
+# Use data.id from the response as ADDRESS_ID
+
+curl -X PUT http://localhost:5006/api/gw/carts/me -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"lines\":[{\"productId\":\"p-100\",\"quantity\":1},{\"productId\":\"p-200\",\"quantity\":2}]}"
+curl -X POST http://localhost:5006/api/gw/orders/checkout -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"promoCode\":\"WELCOME10\",\"addressId\":\"ADDRESS_ID\"}"
 ```
 
-3b. **Simulated payment (Sprint A)** — substitute `data.order.id` from the response. Optional JSON `idempotencyKey` for safe retries.
+The cart is cleared on success. The order starts in **`AwaitingPayment`** (inventory already reserved). `paymentDueAt` comes from `Order:PaymentTimeoutMinutes` (default **30**).
+
+3b. **Simulated payment (Sprint A)** — substitute the order id from the response. Send the same user’s Bearer token; optional `idempotencyKey`.
 
 ```bash
-curl -X POST http://localhost:5001/api/orders/<orderId>/pay -H "Content-Type: application/json" -d "{\"idempotencyKey\":\"demo-pay-1\"}"
+curl -X POST http://localhost:5006/api/gw/orders/<orderId>/pay -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"idempotencyKey\":\"demo-pay-1\"}"
 ```
 
 Expire unpaid orders (releases inventory, sets `Cancelled`, publishes `order.cancelled`):
@@ -151,22 +159,28 @@ Or trigger via **JobService** (Docker sets `Jobs__OrderServiceBaseUrl` to OrderS
 curl -X POST "http://localhost:5011/api/jobs/run/expire-awaiting-payments?maxAgeMinutes=30"
 ```
 
-4. **Single-SKU order (legacy)** — optional `userId` so the order appears in the per-user list.
+4. **Single-SKU order** — JWT required; `userId` comes from the token (body `userId` is ignored).
 
 ```bash
-curl -X POST http://localhost:5001/api/orders -H "Content-Type: application/json" -d "{\"productId\":\"p-100\",\"quantity\":2,\"promoCode\":\"WELCOME10\",\"userId\":\"demo-user\"}"
+curl -X POST http://localhost:5006/api/gw/orders -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"productId\":\"p-100\",\"quantity\":2,\"promoCode\":\"WELCOME10\"}"
 ```
 
-Fetch one order by id:
+Fetch one order by id (owner or **admin** JWT):
 
 ```bash
-curl http://localhost:5001/api/orders/<orderId>
+curl http://localhost:5006/api/gw/orders/<orderId> -H "Authorization: Bearer ACCESS_TOKEN"
 ```
 
-List recent orders for a user (`take` defaults to 20, max 100):
+List **my** recent orders (`take` defaults to 20, max 100):
 
 ```bash
-curl "http://localhost:5001/api/orders/by-user/demo-user?take=10"
+curl "http://localhost:5006/api/gw/orders/me?take=10" -H "Authorization: Bearer ACCESS_TOKEN"
+```
+
+List orders for a specific user id (**admin** gateway policy only):
+
+```bash
+curl "http://localhost:5006/api/gw/orders/by-user/<userId>?take=10" -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
 ```
 
 The order payload includes main `status` (`Pending` / **`AwaitingPayment`** / `Confirmed` / `Completed` / `Cancelled` / `Failed`), `paymentDueAt` / `paidAt`, and `subOrders` with per-shop `fulfillmentStatus` (`PendingShipment` / `Shipped` / `Delivered` / `Cancelled`).
@@ -186,8 +200,8 @@ curl http://localhost:5001/demo/config
 7. **Sub-order fulfillment (demo)**: the main order must be **`Confirmed` (simulated payment done)** before shipping. Each sub-order moves `PendingShipment` → `Shipped` → `Delivered`; when all sub-orders are delivered, the main order becomes `Completed`. Substitute `order.id` and each `order.subOrders[i].id`:
 
 ```bash
-curl -X POST http://localhost:5001/api/orders/<orderId>/sub-orders/<subOrderId>/ship -H "Content-Type: application/json" -d "{\"trackingNumber\":\"SF123\"}"
-curl -X POST http://localhost:5001/api/orders/<orderId>/sub-orders/<subOrderId>/deliver
+curl -X POST http://localhost:5006/api/gw/orders/<orderId>/sub-orders/<subOrderId>/ship -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"trackingNumber\":\"SF123\"}"
+curl -X POST http://localhost:5006/api/gw/orders/<orderId>/sub-orders/<subOrderId>/deliver -H "Authorization: Bearer ACCESS_TOKEN"
 ```
 
 (Repeat for every sub-order until the main order `Status` is `Completed`.)
@@ -195,8 +209,8 @@ curl -X POST http://localhost:5001/api/orders/<orderId>/sub-orders/<subOrderId>/
 8. **Cancellation (not shipped / unpaid)**: full cancel allows **`AwaitingPayment` or `Confirmed`** with **every** sub-order still `PendingShipment`, then inventory is released per line. Cancelling one sub-order releases only its lines; if every sub-order is cancelled, the main order becomes `Cancelled`. Shipped/delivered orders cannot be cancelled via these demo endpoints.
 
 ```bash
-curl -X POST http://localhost:5001/api/orders/<orderId>/sub-orders/<subOrderId>/cancel
-curl -X POST http://localhost:5001/api/orders/<orderId>/cancel
+curl -X POST http://localhost:5006/api/gw/orders/<orderId>/sub-orders/<subOrderId>/cancel -H "Authorization: Bearer ACCESS_TOKEN"
+curl -X POST http://localhost:5006/api/gw/orders/<orderId>/cancel -H "Authorization: Bearer ACCESS_TOKEN"
 ```
 
 ## Useful Troubleshooting Commands

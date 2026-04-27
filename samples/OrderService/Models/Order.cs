@@ -15,6 +15,11 @@ public sealed class Order
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? PaymentDueAt { get; set; }
     public DateTimeOffset? PaidAt { get; set; }
+    public Guid? AddressId { get; set; }
+    public string? ShipToReceiverName { get; set; }
+    public string? ShipToPhone { get; set; }
+    public string? ShipToRegion { get; set; }
+    public string? ShipToDetail { get; set; }
 }
 
 public sealed class SubOrder

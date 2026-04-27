@@ -22,6 +22,7 @@ public static class ApiErrorCodes
     public const string InvalidFulfillmentState = "invalid_fulfillment_state";
     public const string CannotCancel = "cannot_cancel";
     public const string PaymentRequired = "payment_required";
+    public const string InvalidAddress = "invalid_address";
 }
 public sealed record PagedResult<T>(IReadOnlyCollection<T> Items, int Page, int PageSize, int Total);
 public sealed record PageQuery(int Page = 1, int PageSize = 50)

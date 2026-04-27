@@ -30,7 +30,8 @@ public sealed class AuthController(
             return StatusCode((int)response.StatusCode, new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.UpstreamError, "User service returned an unexpected status.")));
         }
 
-        var user = await response.Content.ReadFromJsonAsync<AuthUserResponse>(cancellationToken: cancellationToken);
+        var wrapped = await response.Content.ReadFromJsonAsync<ApiResponse<AuthUserResponse>>(cancellationToken: cancellationToken);
+        var user = wrapped?.Data;
         if (user is null)
         {
             return BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidResponse, "Failed to register user.")));
@@ -54,7 +55,8 @@ public sealed class AuthController(
             return StatusCode((int)verifyResponse.StatusCode, new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.UpstreamError, "User service returned an unexpected status.")));
         }
 
-        var user = await verifyResponse.Content.ReadFromJsonAsync<AuthUserResponse>(cancellationToken: cancellationToken);
+        var wrapped = await verifyResponse.Content.ReadFromJsonAsync<ApiResponse<AuthUserResponse>>(cancellationToken: cancellationToken);
+        var user = wrapped?.Data;
         if (user is null)
         {
             return Unauthorized(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Unauthorized, "Invalid account or password.")));
@@ -87,7 +89,8 @@ public sealed class AuthController(
             return Unauthorized(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Unauthorized, "Failed to load user from refresh token.")));
         }
 
-        var user = await response.Content.ReadFromJsonAsync<AuthUserResponse>(cancellationToken: cancellationToken);
+        var wrapped = await response.Content.ReadFromJsonAsync<ApiResponse<AuthUserResponse>>(cancellationToken: cancellationToken);
+        var user = wrapped?.Data;
         if (user is null)
         {
             return Unauthorized(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Unauthorized, "Failed to load user from refresh token.")));

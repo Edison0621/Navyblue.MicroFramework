@@ -79,6 +79,22 @@ builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("AdminOnly", policy => policy.RequireRole("admin"));
 });
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("FrontendClients", policy =>
+    {
+        policy
+            .WithOrigins(
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                "http://localhost:5174",
+                "http://127.0.0.1:5174",
+                "http://localhost:5013",
+                "http://127.0.0.1:5013")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
 
 var app = builder.Build();
 
@@ -88,9 +104,17 @@ using (var scope = app.Services.CreateScope())
     var metricsStore = scope.ServiceProvider.GetRequiredService<RateLimitMetricsStore>();
     var runtimeSecurity = scope.ServiceProvider.GetRequiredService<RuntimeSecurityConfig>();
     var daprClient = scope.ServiceProvider.GetRequiredService<DaprClient>();
-    await blacklist.LoadAsync(daprClient);
-    await metricsStore.LoadAsync(daprClient);
-    await runtimeSecurity.LoadAsync(daprClient);
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("GatewayBootstrap");
+    try
+    {
+        await blacklist.LoadAsync(daprClient);
+        await metricsStore.LoadAsync(daprClient);
+        await runtimeSecurity.LoadAsync(daprClient);
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Dapr state bootstrap failed; gateway starts with in-memory defaults.");
+    }
 }
 
 if (app.Environment.IsDevelopment())
@@ -98,9 +122,36 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("GatewayUnhandled");
+        logger.LogError(ex, "Unhandled gateway exception for {Path}", context.Request.Path);
+        if (!context.Response.HasStarted)
+        {
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsJsonAsync(new
+            {
+                success = false,
+                data = (object?)null,
+                error = new { code = "internal_error", message = "Gateway internal error." },
+                traceId = context.TraceIdentifier
+            });
+        }
+    }
+});
+
 app.MapGet("/", () => Results.Ok(new { service = "GatewayService", status = "ok" }));
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
 app.MapGet("/health/ready", () => Results.Ok(new { status = "ready" }));
+
+app.UseCors("FrontendClients");
 
 app.Use(async (context, next) =>
 {
@@ -108,7 +159,15 @@ app.Use(async (context, next) =>
     var metricsStore = context.RequestServices.GetRequiredService<RateLimitMetricsStore>();
     var daprClient = context.RequestServices.GetRequiredService<DaprClient>();
     var clientKey = ClientIdentityResolver.Resolve(context);
-    await metricsStore.RecordRequestAsync(clientKey, daprClient);
+    try
+    {
+        await metricsStore.RecordRequestAsync(clientKey, daprClient);
+    }
+    catch (Exception ex)
+    {
+        var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("GatewayRateLimit");
+        logger.LogWarning(ex, "Rate-limit metric persistence failed for {Client}; continuing request.", clientKey);
+    }
     if (blacklist.IsBlocked(clientKey))
     {
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
@@ -226,8 +285,35 @@ app.MapPut("/api/gw/security/config/exempt-paths", async (UpdateExemptPathsReque
     return Results.Ok(runtimeSecurity.GetSnapshot());
 }).RequireAuthorization("AdminOnly");
 
-app.MapPost("/api/gw/auth/login", async (HttpContext httpContext, ForwardLoginRequest request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+app.MapPost("/api/gw/auth/login", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
 {
+    ForwardLoginRequest? request;
+    try
+    {
+        request = await httpContext.Request.ReadFromJsonAsync<ForwardLoginRequest>(cancellationToken: cancellationToken);
+    }
+    catch (System.Text.Json.JsonException)
+    {
+        return Results.BadRequest(new
+        {
+            success = false,
+            data = (object?)null,
+            error = new { code = "invalid_request", message = "Invalid login JSON payload." },
+            traceId = httpContext.TraceIdentifier
+        });
+    }
+
+    if (request is null || string.IsNullOrWhiteSpace(request.Account) || string.IsNullOrWhiteSpace(request.Password))
+    {
+        return Results.BadRequest(new
+        {
+            success = false,
+            data = (object?)null,
+            error = new { code = "invalid_request", message = "Account and password are required." },
+            traceId = httpContext.TraceIdentifier
+        });
+    }
+
     return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, "http://authservice:8080/api/auth/login", request, cancellationToken);
 });
 

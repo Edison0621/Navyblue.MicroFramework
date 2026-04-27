@@ -57,12 +57,14 @@ internal static class JwtTokenIssuer
 {
     public static string Issue(AuthUserResponse user, JwtOptions options)
     {
+        var username = string.IsNullOrWhiteSpace(user.Username) ? user.Email : user.Username;
+        var safeUsername = string.IsNullOrWhiteSpace(username) ? user.Id.ToString() : username;
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new(ClaimTypes.Name, user.Username)
+            new(ClaimTypes.Name, safeUsername)
         };
-        claims.AddRange(user.Roles.Select(role => new Claim(ClaimTypes.Role, role)));
+        claims.AddRange((user.Roles ?? []).Where(role => !string.IsNullOrWhiteSpace(role)).Select(role => new Claim(ClaimTypes.Role, role)));
 
         var credentials = new SigningCredentials(
             new SymmetricSecurityKey(Encoding.UTF8.GetBytes(options.SigningKey)),

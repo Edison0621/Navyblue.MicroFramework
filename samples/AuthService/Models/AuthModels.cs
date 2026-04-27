@@ -9,6 +9,6 @@ public sealed class JwtOptions
 {
     public string Issuer { get; init; } = "DaprFx.AuthService";
     public string Audience { get; init; } = "DaprFx.Services";
-    public string SigningKey { get; init; } = "DaprFx.Dev.Secret.Key.ChangeMe";
+    public string SigningKey { get; init; } = "DaprFx.Dev.Secret.Key.ChangeMe.2026!";
     public int ExpiresMinutes { get; init; } = 60;
 }

@@ -44,7 +44,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   const res = await fetch(`${apiBaseUrl}${path}`, { ...init, headers })
-  const payload = (await res.json()) as ApiEnvelope<T>
+  const raw = await res.text()
+  let payload: ApiEnvelope<T> | null = null
+  if (raw) {
+    try {
+      payload = JSON.parse(raw) as ApiEnvelope<T>
+    } catch {
+      // keep payload null; we will surface a readable error below
+    }
+  }
+
+  if (!payload) {
+    if (res.status === 401) {
+      clearAccessToken()
+    }
+    const fallback = raw.trim() || `Request failed: ${res.status}`
+    throw new ApiError(fallback, undefined, res.status)
+  }
 
   if (!res.ok || !payload.success || payload.data === null) {
     if (res.status === 401) {

@@ -35,6 +35,8 @@ services:
     depends_on:
       - redis
       - inventoryservice
+      - catalogservice
+      - promotionservice
       - otel-collector
 
   orderservice-dapr:
@@ -372,8 +374,10 @@ services:
       - "5011:8080"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
+      - Jobs__OrderServiceBaseUrl=http://orderservice:8080
     depends_on:
       - redis
+      - orderservice
       - otel-collector
 
   jobservice-dapr:

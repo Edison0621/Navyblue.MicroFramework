@@ -31,7 +31,8 @@ public sealed class DaprCatalogRepository(DaprClient daprClient) : ICatalogRepos
 
     public async Task<CatalogItem> UpsertAsync(string id, UpsertCatalogItemRequest request, CancellationToken cancellationToken)
     {
-        var item = new CatalogItem(id, request.Name, request.Price, request.IsActive, DateTimeOffset.UtcNow);
+        var shopId = string.IsNullOrWhiteSpace(request.ShopId) ? "shop-default" : request.ShopId.Trim();
+        var item = new CatalogItem(id, request.Name, request.Price, request.IsActive, DateTimeOffset.UtcNow, shopId);
         await daprClient.SaveStateAsync(StateStoreName, BuildItemKey(id), item, cancellationToken: cancellationToken);
 
         var ids = await daprClient.GetStateAsync<HashSet<string>>(StateStoreName, CatalogIndexStateKey, cancellationToken: cancellationToken) ?? [];

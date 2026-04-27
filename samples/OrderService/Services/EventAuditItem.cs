@@ -6,4 +6,5 @@ public sealed record EventAuditItem(
     string OrderId,
     string ProductId,
     int Quantity,
-    DateTimeOffset ReceivedAt);
+    DateTimeOffset ReceivedAt,
+    string? Detail = null);

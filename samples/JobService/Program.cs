@@ -4,6 +4,17 @@ using JobService.Repositories;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDaprClient();
+builder.Services.AddHttpClient("orderservice", (sp, client) =>
+{
+    var baseUrl = builder.Configuration["Jobs:OrderServiceBaseUrl"]?.Trim().TrimEnd('/');
+    if (string.IsNullOrWhiteSpace(baseUrl))
+    {
+        baseUrl = "http://localhost:5001";
+    }
+
+    client.BaseAddress = new Uri(baseUrl + "/", UriKind.Absolute);
+    client.Timeout = TimeSpan.FromSeconds(60);
+});
 builder.Services.AddControllers();
 builder.Services.AddScoped<IJobRunRepository, DaprJobRunRepository>();
 builder.Services.AddOpenApi();

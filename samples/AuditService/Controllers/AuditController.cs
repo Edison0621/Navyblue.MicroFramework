@@ -21,13 +21,68 @@ public sealed class AuditController(IAuditRepository auditRepository) : Controll
     [Topic("orderpubsub", "order.created")]
     public async Task<IActionResult> OnOrderCreated([FromBody] OrderCreatedEvent payload, CancellationToken cancellationToken)
     {
+        var subDetail = payload.SubOrders is { Count: > 0 } subs
+            ? string.Join(";", subs.Select(s => $"{s.ShopId}:{string.Join(',', s.Lines.Select(l => $"{l.ProductId}x{l.Quantity}"))}"))
+            : null;
+        var detail = subDetail is null
+            ? $"productId={payload.ProductId};quantity={payload.Quantity}"
+            : $"userId={payload.UserId ?? "-"};subOrders={subDetail};primaryProduct={payload.ProductId};totalQty={payload.Quantity}";
         var request = new AuditEventRequest(
             ActorId: "system",
             Action: "order.created",
             ResourceType: "order",
             ResourceId: payload.OrderId,
             Result: "success",
-            Detail: $"productId={payload.ProductId};quantity={payload.Quantity}");
+            Detail: detail);
+        var entry = BuildAuditEvent(request);
+        await auditRepository.AppendAsync(entry, cancellationToken);
+        return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
+    }
+
+    [HttpPost("subscriptions/order-cancelled")]
+    [Topic("orderpubsub", "order.cancelled")]
+    public async Task<IActionResult> OnOrderCancelled([FromBody] OrderCancelledEvent payload, CancellationToken cancellationToken)
+    {
+        var detail = $"fullOrder={payload.FullOrder};subOrderId={payload.SubOrderId ?? "-"};userId={payload.UserId ?? "-"}";
+        var request = new AuditEventRequest(
+            ActorId: "system",
+            Action: "order.cancelled",
+            ResourceType: "order",
+            ResourceId: payload.OrderId,
+            Result: "success",
+            Detail: detail);
+        var entry = BuildAuditEvent(request);
+        await auditRepository.AppendAsync(entry, cancellationToken);
+        return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
+    }
+
+    [HttpPost("subscriptions/order-paid")]
+    [Topic("orderpubsub", "order.paid")]
+    public async Task<IActionResult> OnOrderPaid([FromBody] OrderPaidEvent payload, CancellationToken cancellationToken)
+    {
+        var request = new AuditEventRequest(
+            ActorId: "system",
+            Action: "order.paid",
+            ResourceType: "order",
+            ResourceId: payload.OrderId,
+            Result: "success",
+            Detail: $"userId={payload.UserId ?? "-"}");
+        var entry = BuildAuditEvent(request);
+        await auditRepository.AppendAsync(entry, cancellationToken);
+        return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
+    }
+
+    [HttpPost("subscriptions/order-completed")]
+    [Topic("orderpubsub", "order.completed")]
+    public async Task<IActionResult> OnOrderCompleted([FromBody] OrderCompletedEvent payload, CancellationToken cancellationToken)
+    {
+        var request = new AuditEventRequest(
+            ActorId: "system",
+            Action: "order.completed",
+            ResourceType: "order",
+            ResourceId: payload.OrderId,
+            Result: "success",
+            Detail: $"userId={payload.UserId ?? "-"}");
         var entry = BuildAuditEvent(request);
         await auditRepository.AppendAsync(entry, cancellationToken);
         return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));

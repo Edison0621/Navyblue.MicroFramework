@@ -21,16 +21,20 @@ public sealed class OrderCreatedSubscriber(
             throw new InvalidOperationException("Demo failure switch is enabled for OrderCreatedSubscriber.");
         }
 
+        var detail = @event.SubOrders is { Count: > 0 } subs
+            ? string.Join(" | ", subs.Select(s => $"{s.ShopId}:{s.SubOrderId}"))
+            : null;
         _eventAuditStore.Add(new EventAuditItem(
             Topic: "order.created",
             EventId: Guid.NewGuid().ToString("N"),
             OrderId: @event.OrderId,
             ProductId: @event.ProductId,
             Quantity: @event.Quantity,
-            ReceivedAt: DateTimeOffset.UtcNow));
+            ReceivedAt: DateTimeOffset.UtcNow,
+            Detail: detail));
 
-        _logger.LogInformation("OrderCreated event received: OrderId={OrderId}, ProductId={ProductId}, Quantity={Quantity}",
-            @event.OrderId, @event.ProductId, @event.Quantity);
+        _logger.LogInformation("OrderCreated event received: OrderId={OrderId}, ProductId={ProductId}, Quantity={Quantity}, Detail={Detail}",
+            @event.OrderId, @event.ProductId, @event.Quantity, detail);
         return Task.CompletedTask;
     }
 }

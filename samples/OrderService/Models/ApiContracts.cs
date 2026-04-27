@@ -16,6 +16,12 @@ public static class ApiErrorCodes
     public const string InvalidPromotion = "invalid_promotion";
     public const string InventoryReservationFailed = "inventory_reservation_failed";
     public const string OrderCreationFailed = "order_creation_failed";
+    public const string EmptyCart = "empty_cart";
+    public const string InvalidUserId = "invalid_user_id";
+    public const string SubOrderNotFound = "sub_order_not_found";
+    public const string InvalidFulfillmentState = "invalid_fulfillment_state";
+    public const string CannotCancel = "cannot_cancel";
+    public const string PaymentRequired = "payment_required";
 }
 public sealed record PagedResult<T>(IReadOnlyCollection<T> Items, int Page, int PageSize, int Total);
 public sealed record PageQuery(int Page = 1, int PageSize = 50)

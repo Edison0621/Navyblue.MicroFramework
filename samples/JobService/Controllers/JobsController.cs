@@ -6,8 +6,9 @@ namespace JobService.Controllers;
 
 [ApiController]
 [Route("api/jobs")]
-public sealed class JobsController(IJobRunRepository jobRunRepository) : ControllerBase
+public sealed class JobsController(IJobRunRepository jobRunRepository, IHttpClientFactory httpClientFactory) : ControllerBase
 {
+    private const string OrderServiceClientName = "orderservice";
     [HttpPost("run/reconcile-inventory")]
     public async Task<IActionResult> RunReconcileInventory(CancellationToken cancellationToken)
     {
@@ -29,6 +30,28 @@ public sealed class JobsController(IJobRunRepository jobRunRepository) : Control
             "replay-audit",
             "success",
             "Skeleton replay job executed.",
+            DateTimeOffset.UtcNow);
+        await jobRunRepository.AppendAsync(run, cancellationToken);
+        return Accepted($"/api/jobs/runs/{run.Id}", new ApiResponse<JobRun>(true, run, null));
+    }
+
+    [HttpPost("run/expire-awaiting-payments")]
+    public async Task<IActionResult> RunExpireAwaitingPayments([FromQuery] int maxAgeMinutes = 30, CancellationToken cancellationToken = default)
+    {
+        var safeMinutes = Math.Clamp(maxAgeMinutes, 5, 24 * 60);
+        var client = httpClientFactory.CreateClient(OrderServiceClientName);
+        using var response = await client.PostAsync(
+            $"api/orders/ops/expire-awaiting-payments?maxAgeMinutes={safeMinutes}",
+            content: null,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        var truncated = body.Length > 2000 ? body[..2000] : body;
+        var success = response.IsSuccessStatusCode;
+        var run = new JobRun(
+            Guid.NewGuid().ToString("N"),
+            "expire-awaiting-payments",
+            success ? "success" : "failed",
+            success ? truncated : $"HTTP {(int)response.StatusCode}: {truncated}",
             DateTimeOffset.UtcNow);
         await jobRunRepository.AppendAsync(run, cancellationToken);
         return Accepted($"/api/jobs/runs/{run.Id}", new ApiResponse<JobRun>(true, run, null));

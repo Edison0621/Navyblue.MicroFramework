@@ -52,7 +52,16 @@ builder.AddDaprMicroFramework(options =>
         client.InvocationTimeoutSeconds = 3;
         client.InvocationMaxRetries = 1;
     }, "promotionservice");
+    options.AddServiceClient(typeof(ICatalogService), client =>
+    {
+        client.InvocationTimeoutSeconds = 3;
+        client.InvocationMaxRetries = 2;
+    }, "catalogservice");
     options.AddStateStore(typeof(Order), "statestore");
+    options.AddStateStore(typeof(ShoppingCart), "statestore");
+    options.AddStateStore(typeof(UserOrderIndex), "statestore");
+    options.AddStateStore(typeof(PaymentPendingIndex), "statestore");
+    options.AddStateStore(typeof(OrderPayIdempotencyRecord), "statestore");
 });
 
 var app = builder.Build();

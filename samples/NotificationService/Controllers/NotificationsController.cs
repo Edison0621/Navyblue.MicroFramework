@@ -27,12 +27,18 @@ public sealed class NotificationsController(INotificationRepository notification
     [Topic("orderpubsub", "order.created")]
     public async Task<IActionResult> OnOrderCreated([FromBody] OrderCreatedEvent payload, CancellationToken cancellationToken)
     {
+        var subSummary = payload.SubOrders is { Count: > 0 } subs
+            ? string.Join(", ", subs.Select(s => $"{s.ShopId}({s.Lines.Count} lines)"))
+            : null;
+        var body = subSummary is null
+            ? $"Order {payload.OrderId} created, product={payload.ProductId}, quantity={payload.Quantity}"
+            : $"Order {payload.OrderId} created, user={payload.UserId ?? "-"}, shops=[{subSummary}], primaryProduct={payload.ProductId}, totalQty={payload.Quantity}";
         var item = new NotificationItem(
             Guid.NewGuid().ToString("N"),
             "system",
             "ops",
             "Order Created",
-            $"Order {payload.OrderId} created, product={payload.ProductId}, quantity={payload.Quantity}",
+            body,
             DateTimeOffset.UtcNow);
         await notificationRepository.AppendAsync(item, cancellationToken);
         return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
@@ -48,6 +54,52 @@ public sealed class NotificationsController(INotificationRepository notification
             "ops",
             "Order Compensation Failed",
             $"Order {payload.OrderId} compensation failed: {payload.Error}",
+            DateTimeOffset.UtcNow);
+        await notificationRepository.AppendAsync(item, cancellationToken);
+        return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
+    }
+
+    [HttpPost("subscriptions/order-cancelled")]
+    [Topic("orderpubsub", "order.cancelled")]
+    public async Task<IActionResult> OnOrderCancelled([FromBody] OrderCancelledEvent payload, CancellationToken cancellationToken)
+    {
+        var scope = payload.FullOrder ? "full" : "sub_order";
+        var item = new NotificationItem(
+            Guid.NewGuid().ToString("N"),
+            "system",
+            "ops",
+            "Order Cancelled",
+            $"Order {payload.OrderId} cancelled ({scope}), user={payload.UserId ?? "-"}, subOrderId={payload.SubOrderId ?? "-"}",
+            DateTimeOffset.UtcNow);
+        await notificationRepository.AppendAsync(item, cancellationToken);
+        return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
+    }
+
+    [HttpPost("subscriptions/order-paid")]
+    [Topic("orderpubsub", "order.paid")]
+    public async Task<IActionResult> OnOrderPaid([FromBody] OrderPaidEvent payload, CancellationToken cancellationToken)
+    {
+        var item = new NotificationItem(
+            Guid.NewGuid().ToString("N"),
+            "system",
+            "ops",
+            "Order Paid",
+            $"Order {payload.OrderId} paid (simulated), user={payload.UserId ?? "-"}",
+            DateTimeOffset.UtcNow);
+        await notificationRepository.AppendAsync(item, cancellationToken);
+        return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
+    }
+
+    [HttpPost("subscriptions/order-completed")]
+    [Topic("orderpubsub", "order.completed")]
+    public async Task<IActionResult> OnOrderCompleted([FromBody] OrderCompletedEvent payload, CancellationToken cancellationToken)
+    {
+        var item = new NotificationItem(
+            Guid.NewGuid().ToString("N"),
+            "system",
+            "ops",
+            "Order Completed",
+            $"Order {payload.OrderId} completed, user={payload.UserId ?? "-"}",
             DateTimeOffset.UtcNow);
         await notificationRepository.AppendAsync(item, cancellationToken);
         return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));

@@ -1,6 +1,64 @@
-@OrderService_HostAddress = http://localhost:5010
+@host = http://localhost:5001
 
-GET {{OrderService_HostAddress}}/weatherforecast/
-Accept: application/json
+### Replace shopping cart
+PUT {{host}}/api/carts/demo-user
+Content-Type: application/json
 
-###
+{
+  "lines": [
+    { "productId": "p-100", "quantity": 1 },
+    { "productId": "p-200", "quantity": 2 }
+  ]
+}
+
+### Checkout cart (clears cart on success)
+POST {{host}}/api/orders/checkout
+Content-Type: application/json
+
+{
+  "userId": "demo-user",
+  "promoCode": null
+}
+
+### Simulate pay (order must be AwaitingPayment)
+POST {{host}}/api/orders/{orderId}/pay
+Content-Type: application/json
+
+{
+  "idempotencyKey": "http-demo-1"
+}
+
+### Expire unpaid orders (ops)
+POST {{host}}/api/orders/ops/expire-awaiting-payments?maxAgeMinutes=30
+
+### Same via JobService (localhost 5011, configure Jobs:OrderServiceBaseUrl)
+# POST http://localhost:5011/api/jobs/run/expire-awaiting-payments?maxAgeMinutes=30
+
+### List orders for user (newest first)
+GET {{host}}/api/orders/by-user/demo-user?take=10
+
+### Sub-order ship then deliver (paste orderId + subOrderId from GET order or checkout response)
+# POST {{host}}/api/orders/{orderId}/sub-orders/{subOrderId}/ship
+# Content-Type: application/json
+#
+# { "trackingNumber": "SF123" }
+#
+# POST {{host}}/api/orders/{orderId}/sub-orders/{subOrderId}/deliver
+
+### Cancel (only while sub-order still PendingShipment)
+# POST {{host}}/api/orders/{orderId}/sub-orders/{subOrderId}/cancel
+# POST {{host}}/api/orders/{orderId}/cancel
+
+### Legacy single-SKU create (optional userId for index)
+POST {{host}}/api/orders
+Content-Type: application/json
+
+{
+  "productId": "p-100",
+  "quantity": 2,
+  "promoCode": null,
+  "userId": "demo-user"
+}
+
+### Get order (paste id from create/checkout response)
+# GET {{host}}/api/orders/{orderId}

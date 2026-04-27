@@ -48,12 +48,18 @@ public sealed class OrderController(
             return Unauthorized(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Unauthorized, "Missing user identity.")));
         }
 
+        var userGuard = await UserStatusGuard.EnsureUserIsActiveAsync(this, _userService, callerUserId, cancellationToken);
+        if (userGuard is not null)
+        {
+            return userGuard;
+        }
+
         if (request.Quantity <= 0)
         {
             return BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidQuantity, "Quantity must be greater than zero.")));
         }
 
-        var resolution = await ResolveLineAsync(request.ProductId, request.Quantity, cancellationToken);
+        var resolution = await ResolveLineAsync(request.ProductId, request.SkuId, request.Quantity, cancellationToken);
         if (resolution.Error is not null)
         {
             return resolution.Error;
@@ -77,6 +83,12 @@ public sealed class OrderController(
         if (userId is null)
         {
             return Unauthorized(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Unauthorized, "Missing user identity.")));
+        }
+
+        var userGuard = await UserStatusGuard.EnsureUserIsActiveAsync(this, _userService, userId, cancellationToken);
+        if (userGuard is not null)
+        {
+            return userGuard;
         }
 
         if (request.AddressId is null)
@@ -116,7 +128,7 @@ public sealed class OrderController(
                 continue;
             }
 
-            var resolution = await ResolveLineAsync(line.ProductId, line.Quantity, cancellationToken);
+            var resolution = await ResolveLineAsync(line.ProductId, line.SkuId, line.Quantity, cancellationToken);
             if (resolution.Error is not null)
             {
                 return resolution.Error;
@@ -164,6 +176,26 @@ public sealed class OrderController(
         return await ListOrdersForUserAsync(userId, take, cancellationToken);
     }
 
+    [HttpGet("me/search")]
+    public async Task<IActionResult> SearchMyOrders(
+        [FromQuery] string? status,
+        [FromQuery] string? productId,
+        [FromQuery] string? skuId,
+        [FromQuery] DateTimeOffset? from,
+        [FromQuery] DateTimeOffset? to,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default)
+    {
+        var userId = OrderAccess.GetUserId(User);
+        if (userId is null)
+        {
+            return Unauthorized(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Unauthorized, "Missing user identity.")));
+        }
+
+        return await SearchOrdersForUserAsync(userId, status, productId, skuId, from, to, page, pageSize, cancellationToken);
+    }
+
     [HttpGet("by-user/{userId}")]
     [Authorize(Policy = "AdminOnly")]
     public async Task<IActionResult> ListOrdersByUser(string userId, [FromQuery] int take = 20, CancellationToken cancellationToken = default)
@@ -174,6 +206,27 @@ public sealed class OrderController(
         }
 
         return await ListOrdersForUserAsync(userId.Trim(), take, cancellationToken);
+    }
+
+    [HttpGet("by-user/{userId}/search")]
+    [Authorize(Policy = "AdminOnly")]
+    public async Task<IActionResult> SearchOrdersByUser(
+        string userId,
+        [FromQuery] string? status,
+        [FromQuery] string? productId,
+        [FromQuery] string? skuId,
+        [FromQuery] DateTimeOffset? from,
+        [FromQuery] DateTimeOffset? to,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidUserId, "UserId is required.")));
+        }
+
+        return await SearchOrdersForUserAsync(userId.Trim(), status, productId, skuId, from, to, page, pageSize, cancellationToken);
     }
 
     [HttpGet("{id}")]
@@ -216,7 +269,72 @@ public sealed class OrderController(
         return Ok(new ApiResponse<IReadOnlyList<Order>>(true, orders, null));
     }
 
-    private async Task<LineResolution> ResolveLineAsync(string productId, int quantity, CancellationToken cancellationToken)
+    private async Task<IActionResult> SearchOrdersForUserAsync(
+        string userId,
+        string? status,
+        string? productId,
+        string? skuId,
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var key = UserOrderIndex.StateKey(userId);
+        var index = await _userOrderIndexStore.GetAsync(key, cancellationToken);
+        if (index?.OrderIds is null || index.OrderIds.Count == 0)
+        {
+            var empty = new PagedResult<Order>([], 1, 20, 0);
+            return Ok(new ApiResponse<PagedResult<Order>>(true, empty, null));
+        }
+
+        var all = new List<Order>();
+        foreach (var orderId in index.OrderIds)
+        {
+            var o = await _stateStore.GetAsync(orderId, cancellationToken);
+            if (o is not null)
+            {
+                all.Add(o);
+            }
+        }
+
+        IEnumerable<Order> filtered = all;
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            filtered = filtered.Where(o => string.Equals(o.Status, status.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(productId))
+        {
+            var pid = productId.Trim();
+            filtered = filtered.Where(o => o.SubOrders.SelectMany(s => s.Lines).Any(l => string.Equals(l.ProductId, pid, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(skuId))
+        {
+            var sid = skuId.Trim();
+            filtered = filtered.Where(o => o.SubOrders.SelectMany(s => s.Lines).Any(l => string.Equals(l.SkuId, sid, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        if (from.HasValue)
+        {
+            filtered = filtered.Where(o => o.CreatedAt >= from.Value);
+        }
+
+        if (to.HasValue)
+        {
+            filtered = filtered.Where(o => o.CreatedAt <= to.Value);
+        }
+
+        var q = new PageQuery(page, pageSize);
+        var ordered = filtered.OrderByDescending(x => x.CreatedAt).ToList();
+        var total = ordered.Count;
+        var items = ordered.Skip((q.SafePage - 1) * q.SafePageSize).Take(q.SafePageSize).ToList();
+        var data = new PagedResult<Order>(items, q.SafePage, q.SafePageSize, total);
+        return Ok(new ApiResponse<PagedResult<Order>>(true, data, null));
+    }
+
+    private async Task<LineResolution> ResolveLineAsync(string productId, string? skuId, int quantity, CancellationToken cancellationToken)
     {
         var catalog = await TryGetCatalogItemAsync(productId, cancellationToken);
         if (catalog is { IsActive: false })
@@ -229,11 +347,25 @@ public sealed class OrderController(
 
         if (catalog is not null)
         {
-            var unitPrice = Math.Round(catalog.Price, 2);
+            var normalizedSkuId = string.IsNullOrWhiteSpace(skuId) ? null : skuId.Trim();
+            CatalogSkuDto? matchedSku = null;
+            if (!string.IsNullOrWhiteSpace(normalizedSkuId))
+            {
+                matchedSku = catalog.Skus.FirstOrDefault(x => string.Equals(x.SkuId, normalizedSkuId, StringComparison.OrdinalIgnoreCase));
+                if (matchedSku is null || !matchedSku.IsActive)
+                {
+                    return new LineResolution(
+                        BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InvalidRequest, "Sku is invalid or inactive."))));
+                }
+            }
+
+            var unitPrice = Math.Round(matchedSku?.Price ?? catalog.Price, 2);
             var shopId = string.IsNullOrWhiteSpace(catalog.ShopId) ? "shop-default" : catalog.ShopId.Trim();
             var line = new OrderLine
             {
                 ProductId = productId,
+                SkuId = normalizedSkuId,
+                SkuName = matchedSku?.Name,
                 Quantity = quantity,
                 UnitPrice = unitPrice,
                 LineTotal = Math.Round(unitPrice * quantity, 2),
@@ -270,6 +402,8 @@ public sealed class OrderController(
         var fallbackLine = new OrderLine
         {
             ProductId = productId,
+            SkuId = null,
+            SkuName = null,
             Quantity = quantity,
             UnitPrice = fallbackPrice,
             LineTotal = Math.Round(fallbackPrice * quantity, 2),
@@ -337,14 +471,17 @@ public sealed class OrderController(
             order.FinalAmount = promotion.FinalAmount;
         }
 
-        var reservations = order.SubOrders.SelectMany(s => s.Lines).Select(l => (l.ProductId, l.Quantity)).ToList();
+        var reservations = order.SubOrders
+            .SelectMany(s => s.Lines)
+            .Select(l => (InventoryProductId: BuildInventoryProductId(l.ProductId, l.SkuId), l.Quantity))
+            .ToList();
 
         try
         {
-            var reservedSoFar = new List<(string ProductId, int Quantity)>();
-            foreach (var (productId, qty) in reservations)
+            var reservedSoFar = new List<(string InventoryProductId, int Quantity)>();
+            foreach (var (inventoryProductId, qty) in reservations)
             {
-                var reserved = await _inventoryService.ReserveAsync(productId, new InventoryQuantityRequest(qty));
+                var reserved = await _inventoryService.ReserveAsync(inventoryProductId, new InventoryQuantityRequest(qty));
                 if (reserved is null)
                 {
                     foreach (var (rolledBackProductId, rolledBackQty) in reservedSoFar)
@@ -355,7 +492,7 @@ public sealed class OrderController(
                         }
                         catch (Exception releaseEx)
                         {
-                            _logger.LogError(releaseEx, "Rolling back reservation failed. ProductId={ProductId}, Quantity={Quantity}", rolledBackProductId, rolledBackQty);
+                            _logger.LogError(releaseEx, "Rolling back reservation failed. InventoryProductId={InventoryProductId}, Quantity={Quantity}", rolledBackProductId, rolledBackQty);
                         }
                     }
 
@@ -366,7 +503,7 @@ public sealed class OrderController(
                     return BadRequest(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.InventoryReservationFailed, "Inventory reservation failed.")));
                 }
 
-                reservedSoFar.Add((productId, qty));
+                reservedSoFar.Add((inventoryProductId, qty));
             }
 
             var paymentMinutes = Math.Clamp(_configuration.GetValue<int>("Order:PaymentTimeoutMinutes", 30), 5, 24 * 60);
@@ -399,17 +536,17 @@ public sealed class OrderController(
             order.FailureReason = ex.Message;
             order.UpdatedAt = DateTimeOffset.UtcNow;
             _logger.LogWarning(ex, "Order creation failed, attempting inventory compensation.");
-            foreach (var (productId, qty) in reservations)
+            foreach (var (inventoryProductId, qty) in reservations)
             {
                 try
                 {
-                    await _inventoryService.ReleaseAsync(productId, new InventoryQuantityRequest(qty));
+                    await _inventoryService.ReleaseAsync(inventoryProductId, new InventoryQuantityRequest(qty));
                 }
                 catch (Exception compensationEx)
                 {
-                    _logger.LogError(compensationEx, "Inventory compensation failed. ProductId={ProductId}, Quantity={Quantity}", productId, qty);
+                    _logger.LogError(compensationEx, "Inventory compensation failed. InventoryProductId={InventoryProductId}, Quantity={Quantity}", inventoryProductId, qty);
                     await TryPublishCompensationFailureAuditAsync(order, compensationEx, cancellationToken);
-                    await TryPublishCompensationFailureEventAsync(order, productId, qty, compensationEx, cancellationToken);
+                    await TryPublishCompensationFailureEventAsync(order, inventoryProductId, qty, compensationEx, cancellationToken);
                 }
             }
 
@@ -460,13 +597,23 @@ public sealed class OrderController(
         return (lines[0].ProductId, lines.Sum(l => l.Quantity));
     }
 
+    private static string BuildInventoryProductId(string productId, string? skuId)
+    {
+        if (string.IsNullOrWhiteSpace(skuId))
+        {
+            return productId;
+        }
+
+        return $"{productId}::{skuId.Trim()}";
+    }
+
     private static OrderCreatedEvent BuildOrderCreatedEvent(Order order, string primaryProductId, int totalQuantity)
     {
         var subPayloads = order.SubOrders
             .Select(s => new OrderCreatedSubOrderPayload(
                 s.ShopId,
                 s.Id,
-                s.Lines.Select(l => new OrderCreatedLinePayload(l.ProductId, l.Quantity, l.UnitPrice)).ToList()))
+                s.Lines.Select(l => new OrderCreatedLinePayload(l.ProductId, l.SkuId, l.Quantity, l.UnitPrice)).ToList()))
             .ToList();
 
         return new OrderCreatedEvent(

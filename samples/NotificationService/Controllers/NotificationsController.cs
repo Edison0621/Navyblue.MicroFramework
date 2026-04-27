@@ -105,6 +105,66 @@ public sealed class NotificationsController(INotificationRepository notification
         return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
     }
 
+    [HttpPost("subscriptions/order-aftersale-requested")]
+    [Topic("orderpubsub", "order.aftersale.requested")]
+    public async Task<IActionResult> OnAfterSaleRequested([FromBody] AfterSaleRequestedEvent payload, CancellationToken cancellationToken)
+    {
+        var item = new NotificationItem(
+            Guid.NewGuid().ToString("N"),
+            "system",
+            "ops",
+            "After-sale Requested",
+            $"Order {payload.OrderId} after-sale requested, afterSaleId={payload.AfterSaleId}, user={payload.UserId}, subOrderId={payload.SubOrderId ?? "-"}, reason={payload.Reason}",
+            DateTimeOffset.UtcNow);
+        await notificationRepository.AppendAsync(item, cancellationToken);
+        return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
+    }
+
+    [HttpPost("subscriptions/order-aftersale-reviewed")]
+    [Topic("orderpubsub", "order.aftersale.reviewed")]
+    public async Task<IActionResult> OnAfterSaleReviewed([FromBody] AfterSaleReviewedEvent payload, CancellationToken cancellationToken)
+    {
+        var item = new NotificationItem(
+            Guid.NewGuid().ToString("N"),
+            "system",
+            "ops",
+            "After-sale Reviewed",
+            $"Order {payload.OrderId} after-sale reviewed, afterSaleId={payload.AfterSaleId}, status={payload.Status}, reviewer={payload.ReviewedByUserId}",
+            DateTimeOffset.UtcNow);
+        await notificationRepository.AppendAsync(item, cancellationToken);
+        return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
+    }
+
+    [HttpPost("subscriptions/order-refunded")]
+    [Topic("orderpubsub", "order.refunded")]
+    public async Task<IActionResult> OnOrderRefunded([FromBody] OrderRefundedEvent payload, CancellationToken cancellationToken)
+    {
+        var item = new NotificationItem(
+            Guid.NewGuid().ToString("N"),
+            "system",
+            "ops",
+            "Order Refunded",
+            $"Order {payload.OrderId} refunded amount={payload.Amount}, afterSaleId={payload.AfterSaleId}, refundTx={payload.RefundTransactionId}",
+            DateTimeOffset.UtcNow);
+        await notificationRepository.AppendAsync(item, cancellationToken);
+        return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
+    }
+
+    [HttpPost("subscriptions/order-payment-failed")]
+    [Topic("orderpubsub", "order.payment.failed")]
+    public async Task<IActionResult> OnOrderPaymentFailed([FromBody] OrderPaymentFailedEvent payload, CancellationToken cancellationToken)
+    {
+        var item = new NotificationItem(
+            Guid.NewGuid().ToString("N"),
+            "alert",
+            "ops",
+            "Order Payment Failed",
+            $"Order {payload.OrderId} payment failed status={payload.Status}, tx={payload.TransactionId ?? "-"}, reason={payload.Reason}",
+            DateTimeOffset.UtcNow);
+        await notificationRepository.AppendAsync(item, cancellationToken);
+        return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetRecent([FromQuery] int page, [FromQuery] int pageSize, CancellationToken cancellationToken)
     {

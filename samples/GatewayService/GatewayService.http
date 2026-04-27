@@ -1,0 +1,184 @@
+@gw = http://localhost:5006
+@userHost = http://localhost:5005
+@token = paste-user-access-token-here
+@adminToken = paste-admin-access-token-here
+@addressId = 00000000-0000-0000-0000-000000000001
+@orderId = paste-order-id-here
+@subOrderId = paste-sub-order-id-here
+
+### Seed demo users (direct UserService)
+POST {{userHost}}/api/users/seed
+
+### Seed admin user (direct UserService)
+POST {{userHost}}/api/users/seed-admin
+
+### Login user via Gateway
+POST {{gw}}/api/gw/auth/login
+Content-Type: application/json
+
+{
+  "account": "demo",
+  "password": "demo123"
+}
+
+### Login admin via Gateway
+POST {{gw}}/api/gw/auth/login
+Content-Type: application/json
+
+{
+  "account": "admin",
+  "password": "admin123"
+}
+
+### Create my address (copy response data.id to @addressId)
+POST {{gw}}/api/gw/users/me/addresses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "receiverName": "Zhang San",
+  "phone": "13800000000",
+  "region": "Shanghai",
+  "detail": "No.1 Demo Rd",
+  "isDefault": true
+}
+
+### List my addresses
+GET {{gw}}/api/gw/users/me/addresses
+Authorization: Bearer {{token}}
+
+### Replace my cart (SKU + normal product)
+PUT {{gw}}/api/gw/carts/me
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "lines": [
+    { "productId": "p-100", "skuId": "p-100-red-128", "quantity": 1 },
+    { "productId": "p-200", "quantity": 2 }
+  ]
+}
+
+### Checkout cart
+POST {{gw}}/api/gw/orders/checkout
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "promoCode": "WELCOME10",
+  "addressId": "{{addressId}}"
+}
+
+### Pay order (copy order id to @orderId first)
+POST {{gw}}/api/gw/orders/{{orderId}}/pay
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "idempotencyKey": "gw-http-demo-1"
+}
+
+### Payment callback (PSP -> Gateway -> OrderService, no JWT)
+# Signature is HMAC-SHA256 hex(lower) of:
+# timestamp + "\n" + callbackId + "\n" + orderId + "\n" + transactionId + "\n" + amount(F2) + "\n" + status(lower) + "\n" + paidAtEpoch
+POST {{gw}}/api/gw/orders/payments/callback
+Content-Type: application/json
+x-payment-timestamp: 1714190000
+x-payment-signature: replace-with-hmac-hex
+
+{
+  "callbackId": "cb_20260427143001_0001",
+  "orderId": "{{orderId}}",
+  "transactionId": "txn_20260427_0001",
+  "amount": 119.00,
+  "status": "succeeded",
+  "paidAt": "2026-04-27T14:30:00Z"
+}
+
+### Payment callback failed/cancelled example
+# status can be "failed" or "cancelled" to mark order failed and release reserved inventory
+# callbackId must be unique per callback event
+
+### List my orders
+GET {{gw}}/api/gw/orders/me?take=10
+Authorization: Bearer {{token}}
+
+### Search my orders (Sprint D)
+GET {{gw}}/api/gw/orders/me/search?status=AwaitingPayment&page=1&pageSize=20&productId=p-100&skuId=p-100-red-128
+Authorization: Bearer {{token}}
+
+### Get one order by id
+GET {{gw}}/api/gw/orders/{{orderId}}
+Authorization: Bearer {{token}}
+
+### Ship sub-order
+POST {{gw}}/api/gw/orders/{{orderId}}/sub-orders/{{subOrderId}}/ship
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "trackingNumber": "SF123"
+}
+
+### Deliver sub-order
+POST {{gw}}/api/gw/orders/{{orderId}}/sub-orders/{{subOrderId}}/deliver
+Authorization: Bearer {{token}}
+
+### Create after-sale request (Sprint E)
+POST {{gw}}/api/gw/orders/{{orderId}}/after-sales
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "subOrderId": "{{subOrderId}}",
+  "reason": "damaged package",
+  "detail": "outer box broken and scratched",
+  "requestedAmount": 20
+}
+
+### List order after-sales
+GET {{gw}}/api/gw/orders/{{orderId}}/after-sales
+Authorization: Bearer {{token}}
+
+### Admin approve after-sale
+# POST {{gw}}/api/gw/orders/{{orderId}}/after-sales/{afterSaleId}/approve
+# Authorization: Bearer {{adminToken}}
+# Content-Type: application/json
+#
+# { "note": "approved by cs" }
+# Note: Sprint F auto-refund runs when requestedAmount > 0.
+
+### Admin reject after-sale
+# POST {{gw}}/api/gw/orders/{{orderId}}/after-sales/{afterSaleId}/reject
+# Authorization: Bearer {{adminToken}}
+# Content-Type: application/json
+#
+# { "note": "insufficient evidence" }
+
+### Cancel sub-order (only PendingShipment)
+# POST {{gw}}/api/gw/orders/{{orderId}}/sub-orders/{{subOrderId}}/cancel
+# Authorization: Bearer {{token}}
+
+### Cancel whole order (only AwaitingPayment/Confirmed and all pending shipment)
+# POST {{gw}}/api/gw/orders/{{orderId}}/cancel
+# Authorization: Bearer {{token}}
+
+### Admin: list user orders by userId
+# GET {{gw}}/api/gw/orders/by-user/{userId}?take=10
+# Authorization: Bearer {{adminToken}}
+
+### Admin: search user orders (Sprint D)
+# GET {{gw}}/api/gw/orders/by-user/{userId}/search?status=Completed&from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z&page=1&pageSize=20
+# Authorization: Bearer {{adminToken}}
+
+### Admin: run expire-awaiting-payments job through Gateway
+POST {{gw}}/api/gw/jobs/run/expire-awaiting-payments?maxAgeMinutes=30
+Authorization: Bearer {{adminToken}}
+
+### Admin: run refund reconciliation job through Gateway (Sprint G)
+POST {{gw}}/api/gw/jobs/run/reconcile-refunds?take=200
+Authorization: Bearer {{adminToken}}
+
+### Admin: reclaim expired inventory reservations (Sprint G)
+POST {{gw}}/api/gw/jobs/run/reclaim-expired-inventory-reservations?take=200
+Authorization: Bearer {{adminToken}}

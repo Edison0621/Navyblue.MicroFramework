@@ -126,16 +126,16 @@ docker compose down
 ## 5 分钟体验流程
 
 1. 启动整套环境（推荐脚本或 compose）。
-2. 准备库存与目录（目录中的 `shopId` 用于多店铺拆子单；无目录时回退到商品服务，店铺记为 `shop-default`）：
+2. 准备库存与目录（Sprint C：支持 SKU；库存键可用 `productId::skuId`）：
 
 ```bash
-curl -X PUT http://localhost:5009/api/inventory/p-100 -H "Content-Type: application/json" -d "{\"quantity\":100}"
+curl -X PUT http://localhost:5009/api/inventory/p-100::p-100-red-128 -H "Content-Type: application/json" -d "{\"quantity\":100}"
 curl -X PUT http://localhost:5009/api/inventory/p-200 -H "Content-Type: application/json" -d "{\"quantity\":100}"
-curl -X PUT http://localhost:5008/api/catalog/items/p-100 -H "Content-Type: application/json" -d "{\"name\":\"Demo A\",\"price\":50,\"isActive\":true,\"shopId\":\"shop-east\"}"
+curl -X PUT http://localhost:5008/api/catalog/items/p-100 -H "Content-Type: application/json" -d "{\"name\":\"Demo A\",\"price\":50,\"isActive\":true,\"shopId\":\"shop-east\",\"skus\":[{\"skuId\":\"p-100-red-128\",\"name\":\"Red/128G\",\"price\":56,\"isActive\":true}]}"
 curl -X PUT http://localhost:5008/api/catalog/items/p-200 -H "Content-Type: application/json" -d "{\"name\":\"Demo B\",\"price\":80,\"isActive\":true,\"shopId\":\"shop-west\"}"
 ```
 
-3. **登录、收货地址、购物车结账（Sprint B）**：购物车与结账从 JWT 的 `NameIdentifier` 绑定用户，**不可**再在路径或 body 里冒充他人 `userId`。结账必须传 **`addressId`**，OrderService 会通过 Dapr 调用 UserService 拉取地址并写入订单快照（`shipTo*` 等字段）。以下经 **Gateway**（`5006`）演示；请先将 `ACCESS_TOKEN` 换为登录返回的 `data.accessToken`。
+3. **登录、收货地址、购物车结账（Sprint B + Sprint C SKU）**：购物车与结账从 JWT 的 `NameIdentifier` 绑定用户，**不可**再在路径或 body 里冒充他人 `userId`。结账必须传 **`addressId`**，OrderService 会通过 Dapr 调用 UserService 拉取地址并写入订单快照（`shipTo*` 等字段）。行项目支持可选 `skuId`，有 `skuId` 时按 SKU 价格和 SKU 库存扣减。
 
 ```bash
 curl -X POST http://localhost:5005/api/users/seed
@@ -145,7 +145,7 @@ curl -s -X POST http://localhost:5006/api/gw/auth/login -H "Content-Type: applic
 curl -X POST http://localhost:5006/api/gw/users/me/addresses -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"receiverName\":\"张三\",\"phone\":\"13800000000\",\"region\":\"上海市\",\"detail\":\"XX路1号\",\"isDefault\":true}"
 # 从响应 data.id 得到 ADDRESS_ID（UUID）
 
-curl -X PUT http://localhost:5006/api/gw/carts/me -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"lines\":[{\"productId\":\"p-100\",\"quantity\":1},{\"productId\":\"p-200\",\"quantity\":2}]}"
+curl -X PUT http://localhost:5006/api/gw/carts/me -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"lines\":[{\"productId\":\"p-100\",\"skuId\":\"p-100-red-128\",\"quantity\":1},{\"productId\":\"p-200\",\"quantity\":2}]}"
 curl -X POST http://localhost:5006/api/gw/orders/checkout -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"promoCode\":\"WELCOME10\",\"addressId\":\"ADDRESS_ID\"}"
 ```
 
@@ -169,11 +169,63 @@ curl -X POST "http://localhost:5001/api/orders/ops/expire-awaiting-payments?maxA
 curl -X POST "http://localhost:5011/api/jobs/run/expire-awaiting-payments?maxAgeMinutes=30"
 ```
 
-4. **单笔下单**：需 JWT，`userId` 以令牌为准（body 中的 `userId` 已忽略）。
+4. **单笔下单（支持 SKU）**：需 JWT，`userId` 以令牌为准（body 中的 `userId` 已忽略）。
 
 ```bash
-curl -X POST http://localhost:5006/api/gw/orders -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"productId\":\"p-100\",\"quantity\":2,\"promoCode\":\"WELCOME10\"}"
+curl -X POST http://localhost:5006/api/gw/orders -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"productId\":\"p-100\",\"skuId\":\"p-100-red-128\",\"quantity\":2,\"promoCode\":\"WELCOME10\"}"
 ```
+
+4b. **查询增强（Sprint D）**：
+
+- 订单检索：`/api/gw/orders/me/search` 与 `/api/gw/orders/by-user/{userId}/search`（admin）支持 `status`、`productId`、`skuId`、`from`、`to`、`page`、`pageSize`。
+- 目录检索：`/api/gw/catalog/items` 支持 `q`、`shopId`、`skuId`、`isActive`、`page`、`pageSize`。
+
+```bash
+curl "http://localhost:5006/api/gw/orders/me/search?status=AwaitingPayment&productId=p-100&skuId=p-100-red-128&page=1&pageSize=20" -H "Authorization: Bearer ACCESS_TOKEN"
+curl "http://localhost:5006/api/gw/catalog/items?q=Demo&shopId=shop-east&skuId=p-100-red-128&page=1&pageSize=20" -H "Authorization: Bearer ACCESS_TOKEN"
+```
+
+4c. **售后申请（Sprint E）**：订单拥有者可发起售后申请，管理员可审批（通过/驳回）。支持按整单或子单维度创建申请。
+
+```bash
+curl -X POST http://localhost:5006/api/gw/orders/<orderId>/after-sales -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"subOrderId\":\"<subOrderId>\",\"reason\":\"damaged package\",\"detail\":\"box broken\",\"requestedAmount\":20}"
+curl http://localhost:5006/api/gw/orders/<orderId>/after-sales -H "Authorization: Bearer ACCESS_TOKEN"
+
+# admin review
+curl -X POST http://localhost:5006/api/gw/orders/<orderId>/after-sales/<afterSaleId>/approve -H "Authorization: Bearer ADMIN_ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"note\":\"approved\"}"
+```
+
+Sprint E 事件已接入下游：
+
+- `order.aftersale.requested`：Audit 记审计、Notification 发运维通知
+- `order.aftersale.reviewed`：Audit 记审批结果、Notification 发审批通知
+
+4d. **支付/退款资金流占位（Sprint F）**：
+
+- 支付：`/api/orders/{orderId}/pay` 通过 `IPaymentGateway` 抽象执行 capture，写入 `paymentTransactionId`（当前为模拟网关实现）。
+- 支付回调骨架：新增 `POST /api/orders/payments/callback`，支持 `x-payment-signature` + `x-payment-timestamp` 的 HMAC 校验与回调幂等（`callbackId`）。
+- 回调失败分支：`status=failed/cancelled` 时会释放预占库存、将订单置为 `Failed`，并发布 `order.payment.failed`（同时发布 `order.cancelled` 便于兼容下游）。
+- 退款：售后单审批通过且 `requestedAmount > 0` 时自动触发 refund，写入售后单 `refundStatus/refundTransactionId/refundedAmount/refundedAt`。
+- 退款事件：发布 `order.refunded`，由 Audit/Notification 消费。
+
+4e. **退款幂等 + 对账任务（Sprint G）**：
+
+- 退款幂等：按 `orderId + afterSaleId` 记录退款结果；审批接口重复请求会复用已落库退款流水，避免重复调用退款网关。
+- 审批幂等：已审批为 `Approved` 的售后单再次执行 approve 返回当前结果（幂等成功），避免前端重试误报冲突。
+- 对账任务：新增 `POST /api/orders/ops/reconcile-refunds?take=200`（admin）扫描退款台账与订单售后状态一致性。
+- Gateway/Job 触发：可通过 `POST /api/gw/jobs/run/reconcile-refunds?take=200` 启动对账，并在 Job runs 中查看结果摘要。
+
+4f. **库存预留过期回收（Sprint G.3）**：
+
+- 库存预留台账：`reserve` 操作会记录预留条目（默认 30 分钟 TTL，可传 `ttlMinutes` 覆盖）。
+- 正常释放：`release` 时会优先匹配 `reservationId`，无 id 时按最早到期优先标记释放，减少悬挂预留。
+- 过期回收接口：`POST /api/inventory/ops/reclaim-expired-reservations?take=200` 扫描预留台账，将超时未释放数量回补库存。
+- Gateway/Job 触发：`POST /api/gw/jobs/run/reclaim-expired-inventory-reservations?take=200`，可定时执行并在 Job runs 查看结果。
+
+4g. **账号状态联动（PRD 安全控制补齐）**：
+
+- 订单域关键写操作（购物车改写、下单、支付、发起售后）会通过 UserService 内部接口校验用户状态。
+- 仅 `status=active` 允许继续执行；冻结/禁用账号会返回 403（`user_disabled`）。
 
 订单返回中含主单 `Status`（`Pending` / **`AwaitingPayment`** / `Confirmed` / `Completed` / `Cancelled` / `Failed`）、`paymentDueAt` / `paidAt`、失败原因（失败时）、金额（`OriginalAmount` / `DiscountAmount` / `FinalAmount`），以及 `subOrders`（按 `shopId` 拆分；子单 `fulfillmentStatus`：`PendingShipment` / `Shipped` / `Delivered` / `Cancelled`）。
 

@@ -35,6 +35,7 @@ services:
       - Jwt__Issuer=DaprFx.AuthService
       - Jwt__Audience=DaprFx.Services
       - Jwt__SigningKey=DaprFx.Dev.Secret.Key.ChangeMe
+      - PaymentCallback__SharedSecret=DaprFx.Dev.Payment.Callback.Secret
     depends_on:
       - redis
       - inventoryservice
@@ -382,9 +383,11 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - Jobs__OrderServiceBaseUrl=http://orderservice:8080
+      - Jobs__InventoryServiceBaseUrl=http://inventoryservice:8080
     depends_on:
       - redis
       - orderservice
+      - inventoryservice
       - otel-collector
 
   jobservice-dapr:

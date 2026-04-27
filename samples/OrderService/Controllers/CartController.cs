@@ -1,6 +1,7 @@
 using DaprFx.Core;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using OrderService.Abstractions;
 using OrderService.Models;
 using OrderService.Services;
 
@@ -9,9 +10,10 @@ namespace OrderService.Controllers;
 [ApiController]
 [Route("api/carts")]
 [Authorize]
-public sealed class CartController(IStateStore<ShoppingCart> cartStateStore) : ControllerBase
+public sealed class CartController(IStateStore<ShoppingCart> cartStateStore, IUserService userService) : ControllerBase
 {
     private readonly IStateStore<ShoppingCart> _cartStateStore = cartStateStore;
+    private readonly IUserService _userService = userService;
 
     internal static string BuildCartStateKey(string userId) => $"cart:{userId}";
 
@@ -19,8 +21,19 @@ public sealed class CartController(IStateStore<ShoppingCart> cartStateStore) : C
     {
         return lines
             .Where(x => !string.IsNullOrWhiteSpace(x.ProductId) && x.Quantity > 0)
-            .GroupBy(x => x.ProductId.Trim(), StringComparer.OrdinalIgnoreCase)
-            .Select(g => new CartLine { ProductId = g.Key, Quantity = g.Sum(x => x.Quantity) })
+            .GroupBy(
+                x => $"{x.ProductId.Trim()}::{(string.IsNullOrWhiteSpace(x.SkuId) ? "" : x.SkuId.Trim())}",
+                StringComparer.OrdinalIgnoreCase)
+            .Select(g =>
+            {
+                var first = g.First();
+                return new CartLine
+                {
+                    ProductId = first.ProductId.Trim(),
+                    SkuId = string.IsNullOrWhiteSpace(first.SkuId) ? null : first.SkuId.Trim(),
+                    Quantity = g.Sum(x => x.Quantity)
+                };
+            })
             .ToList();
     }
 
@@ -31,6 +44,12 @@ public sealed class CartController(IStateStore<ShoppingCart> cartStateStore) : C
         if (userId is null)
         {
             return Unauthorized(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Unauthorized, "Missing user identity.")));
+        }
+
+        var userGuard = await UserStatusGuard.EnsureUserIsActiveAsync(this, _userService, userId, cancellationToken);
+        if (userGuard is not null)
+        {
+            return userGuard;
         }
 
         var key = BuildCartStateKey(userId);
@@ -53,9 +72,20 @@ public sealed class CartController(IStateStore<ShoppingCart> cartStateStore) : C
             return Unauthorized(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Unauthorized, "Missing user identity.")));
         }
 
+        var userGuard = await UserStatusGuard.EnsureUserIsActiveAsync(this, _userService, userId, cancellationToken);
+        if (userGuard is not null)
+        {
+            return userGuard;
+        }
+
         var lines = (request.Lines ?? [])
             .Where(x => !string.IsNullOrWhiteSpace(x.ProductId) && x.Quantity > 0)
-            .Select(x => new CartLine { ProductId = x.ProductId.Trim(), Quantity = x.Quantity })
+            .Select(x => new CartLine
+            {
+                ProductId = x.ProductId.Trim(),
+                SkuId = string.IsNullOrWhiteSpace(x.SkuId) ? null : x.SkuId.Trim(),
+                Quantity = x.Quantity
+            })
             .ToList();
         var merged = MergeLines(lines);
         var cart = new ShoppingCart

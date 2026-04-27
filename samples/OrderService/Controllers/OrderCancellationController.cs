@@ -170,7 +170,8 @@ public sealed class OrderCancellationController(
     {
         foreach (var line in lines)
         {
-            await _inventoryService.ReleaseAsync(line.ProductId, new InventoryQuantityRequest(line.Quantity));
+            var inventoryProductId = string.IsNullOrWhiteSpace(line.SkuId) ? line.ProductId : $"{line.ProductId}::{line.SkuId.Trim()}";
+            await _inventoryService.ReleaseAsync(inventoryProductId, new InventoryQuantityRequest(line.Quantity));
         }
     }
 }

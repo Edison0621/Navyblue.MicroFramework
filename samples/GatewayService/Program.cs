@@ -287,6 +287,11 @@ app.MapPost("/api/gw/orders/{orderId}/pay", async (HttpContext httpContext, stri
     return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, $"http://orderservice:8080/api/orders/{Uri.EscapeDataString(orderId)}/pay", body, cancellationToken);
 }).RequireAuthorization();
 
+app.MapPost("/api/gw/orders/payments/callback", async (HttpContext httpContext, ForwardPaymentCallbackRequest request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, "http://orderservice:8080/api/orders/payments/callback", request, cancellationToken);
+});
+
 app.MapPost("/api/gw/orders/ops/expire-awaiting-payments", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
 {
     return await GatewayForwarder.ForwardPostAsync<object?>(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, "http://orderservice:8080/api/orders/ops/expire-awaiting-payments"), null, cancellationToken);
@@ -313,14 +318,46 @@ app.MapPost("/api/gw/orders/{orderId}/sub-orders/{subOrderId}/cancel", async (Ht
     return await GatewayForwarder.ForwardPostAsync<object?>(httpContext, httpClientFactory, $"http://orderservice:8080/api/orders/{Uri.EscapeDataString(orderId)}/sub-orders/{Uri.EscapeDataString(subOrderId)}/cancel", null, cancellationToken);
 }).RequireAuthorization();
 
+app.MapGet("/api/gw/orders/{orderId}/after-sales", async (HttpContext httpContext, string orderId, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, $"http://orderservice:8080/api/orders/{Uri.EscapeDataString(orderId)}/after-sales"), cancellationToken);
+}).RequireAuthorization();
+
+app.MapPost("/api/gw/orders/{orderId}/after-sales", async (HttpContext httpContext, string orderId, ForwardCreateAfterSaleRequest request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, $"http://orderservice:8080/api/orders/{Uri.EscapeDataString(orderId)}/after-sales", request, cancellationToken);
+}).RequireAuthorization();
+
+app.MapPost("/api/gw/orders/{orderId}/after-sales/{afterSaleId}/approve", async (HttpContext httpContext, string orderId, string afterSaleId, ForwardReviewAfterSaleRequest? request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    var body = request ?? new ForwardReviewAfterSaleRequest(null);
+    return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, $"http://orderservice:8080/api/orders/{Uri.EscapeDataString(orderId)}/after-sales/{Uri.EscapeDataString(afterSaleId)}/approve", body, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapPost("/api/gw/orders/{orderId}/after-sales/{afterSaleId}/reject", async (HttpContext httpContext, string orderId, string afterSaleId, ForwardReviewAfterSaleRequest? request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    var body = request ?? new ForwardReviewAfterSaleRequest(null);
+    return await GatewayForwarder.ForwardPostAsync(httpContext, httpClientFactory, $"http://orderservice:8080/api/orders/{Uri.EscapeDataString(orderId)}/after-sales/{Uri.EscapeDataString(afterSaleId)}/reject", body, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
 app.MapGet("/api/gw/orders/me", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
 {
     return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, "http://orderservice:8080/api/orders/me"), cancellationToken);
 }).RequireAuthorization();
 
+app.MapGet("/api/gw/orders/me/search", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, "http://orderservice:8080/api/orders/me/search"), cancellationToken);
+}).RequireAuthorization();
+
 app.MapGet("/api/gw/orders/by-user/{userId}", async (HttpContext httpContext, string userId, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
 {
     return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, $"http://orderservice:8080/api/orders/by-user/{Uri.EscapeDataString(userId)}"), cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapGet("/api/gw/orders/by-user/{userId}/search", async (HttpContext httpContext, string userId, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, $"http://orderservice:8080/api/orders/by-user/{Uri.EscapeDataString(userId)}/search"), cancellationToken);
 }).RequireAuthorization("AdminOnly");
 
 app.MapGet("/api/gw/orders/{id}", async (HttpContext httpContext, string id, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
@@ -418,6 +455,16 @@ app.MapPost("/api/gw/jobs/run/expire-awaiting-payments", async (HttpContext http
     return await GatewayForwarder.ForwardPostAsync<object?>(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, "http://jobservice:8080/api/jobs/run/expire-awaiting-payments"), null, cancellationToken);
 }).RequireAuthorization("AdminOnly");
 
+app.MapPost("/api/gw/jobs/run/reconcile-refunds", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPostAsync<object?>(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, "http://jobservice:8080/api/jobs/run/reconcile-refunds"), null, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
+app.MapPost("/api/gw/jobs/run/reclaim-expired-inventory-reservations", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+{
+    return await GatewayForwarder.ForwardPostAsync<object?>(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, "http://jobservice:8080/api/jobs/run/reclaim-expired-inventory-reservations"), null, cancellationToken);
+}).RequireAuthorization("AdminOnly");
+
 app.MapGet("/api/gw/jobs/runs", async (HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
 {
     return await GatewayForwarder.ForwardGetAsync(httpContext, httpClientFactory, GatewayForwarder.AppendIncomingQuery(httpContext, "http://jobservice:8080/api/jobs/runs"), cancellationToken);
@@ -429,7 +476,8 @@ internal sealed record ForwardLoginRequest(string Account, string Password);
 internal sealed record ForwardRegisterRequest(string Username, string Email, string Password);
 internal sealed record ForwardRolesRequest(string[] Roles);
 internal sealed record ForwardStatusRequest(string Status);
-internal sealed record ForwardCatalogUpsertRequest(string Name, decimal Price, bool IsActive, string? ShopId);
+internal sealed record ForwardCatalogUpsertRequest(string Name, decimal Price, bool IsActive, string? ShopId, IReadOnlyList<ForwardCatalogSkuRequest>? Skus);
+internal sealed record ForwardCatalogSkuRequest(string SkuId, string Name, decimal? Price, bool IsActive);
 internal sealed record ForwardInventorySetRequest(int Quantity);
 internal sealed record ForwardInventoryChangeRequest(int Quantity);
 internal sealed record ForwardCreatePromotionRequest(
@@ -442,14 +490,17 @@ internal sealed record ForwardCreatePromotionRequest(
     bool IsEnabled);
 internal sealed record ForwardValidatePromotionRequest(string Code, decimal OrderAmount);
 internal sealed record ForwardSendNotificationRequest(string Channel, string To, string Title, string Body);
-internal sealed record ForwardCreateOrderRequest(string ProductId, int Quantity, string? PromoCode, string? UserId = null);
+internal sealed record ForwardCreateOrderRequest(string ProductId, string? SkuId, int Quantity, string? PromoCode, string? UserId = null);
 internal sealed record ForwardCheckoutCartRequest(string? PromoCode, Guid? AddressId);
 internal sealed record ForwardCreateUserAddressRequest(string ReceiverName, string Phone, string Region, string Detail, bool IsDefault);
 internal sealed record ForwardUpdateUserAddressRequest(string? ReceiverName, string? Phone, string? Region, string? Detail, bool? IsDefault);
 internal sealed record ForwardSimulatePayRequest(string? IdempotencyKey);
+internal sealed record ForwardPaymentCallbackRequest(string CallbackId, string OrderId, string TransactionId, decimal Amount, string Status, DateTimeOffset PaidAt);
 internal sealed record ForwardSubOrderShipRequest(string? TrackingNumber);
+internal sealed record ForwardCreateAfterSaleRequest(string? SubOrderId, string Reason, string? Detail, decimal? RequestedAmount);
+internal sealed record ForwardReviewAfterSaleRequest(string? Note);
 internal sealed record ForwardReplaceCartRequest(IReadOnlyList<ForwardCartLineDto> Lines);
-internal sealed record ForwardCartLineDto(string ProductId, int Quantity);
+internal sealed record ForwardCartLineDto(string ProductId, string? SkuId, int Quantity);
 internal sealed record BlacklistUpsertRequest(string Client, int? TtlMinutes);
 internal sealed record UpdateRateLimitPolicyRequest(int PermitLimit, int WindowSeconds, int QueueLimit);
 internal sealed record UpdateExemptPathsRequest(string[] Paths);
@@ -880,6 +931,8 @@ internal static class GatewayForwarder
         "Authorization",
         "x-correlation-id",
         "x-request-id",
+        "x-payment-signature",
+        "x-payment-timestamp",
         "traceparent",
         "tracestate",
         "baggage"

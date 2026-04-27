@@ -36,6 +36,8 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddOpenApi();
 builder.Services.AddSingleton<EventAuditStore>();
+builder.Services.AddSingleton<IPaymentGateway, SimulatedPaymentGateway>();
+builder.Services.AddSingleton(builder.Configuration.GetSection("PaymentCallback").Get<PaymentCallbackOptions>() ?? new PaymentCallbackOptions());
 builder.Services.AddDaprFxOperationsDashboard();
 builder.Services.AddOpsDashboardContributor<OrderEventsDashboardContributor>();
 builder.AddDaprMicroFramework(options =>
@@ -94,6 +96,8 @@ builder.AddDaprMicroFramework(options =>
     options.AddStateStore(typeof(UserOrderIndex), "statestore");
     options.AddStateStore(typeof(PaymentPendingIndex), "statestore");
     options.AddStateStore(typeof(OrderPayIdempotencyRecord), "statestore");
+    options.AddStateStore(typeof(OrderRefundIdempotencyRecord), "statestore");
+    options.AddStateStore(typeof(RefundLedgerIndex), "statestore");
 });
 
 var app = builder.Build();

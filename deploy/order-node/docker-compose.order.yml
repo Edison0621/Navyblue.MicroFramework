@@ -30,6 +30,7 @@ services:
       - Jwt__Issuer=DaprFx.AuthService
       - Jwt__Audience=DaprFx.Services
       - Jwt__SigningKey=DaprFx.Dev.Secret.Key.ChangeMe
+      - PaymentCallback__SharedSecret=DaprFx.Dev.Payment.Callback.Secret
     labels:
       - SERVICE_NAME=orderservice
       - SERVICE_8080_NAME=orderservice

@@ -10,4 +10,4 @@ public sealed record OrderCreatedEvent(
 
 public sealed record OrderCreatedSubOrderPayload(string ShopId, string SubOrderId, IReadOnlyList<OrderCreatedLinePayload> Lines);
 
-public sealed record OrderCreatedLinePayload(string ProductId, int Quantity, decimal UnitPrice);
+public sealed record OrderCreatedLinePayload(string ProductId, string? SkuId, int Quantity, decimal UnitPrice);

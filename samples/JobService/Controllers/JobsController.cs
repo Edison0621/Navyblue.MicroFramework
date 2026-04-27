@@ -9,6 +9,7 @@ namespace JobService.Controllers;
 public sealed class JobsController(IJobRunRepository jobRunRepository, IHttpClientFactory httpClientFactory) : ControllerBase
 {
     private const string OrderServiceClientName = "orderservice";
+    private const string InventoryServiceClientName = "inventoryservice";
     [HttpPost("run/reconcile-inventory")]
     public async Task<IActionResult> RunReconcileInventory(CancellationToken cancellationToken)
     {
@@ -50,6 +51,50 @@ public sealed class JobsController(IJobRunRepository jobRunRepository, IHttpClie
         var run = new JobRun(
             Guid.NewGuid().ToString("N"),
             "expire-awaiting-payments",
+            success ? "success" : "failed",
+            success ? truncated : $"HTTP {(int)response.StatusCode}: {truncated}",
+            DateTimeOffset.UtcNow);
+        await jobRunRepository.AppendAsync(run, cancellationToken);
+        return Accepted($"/api/jobs/runs/{run.Id}", new ApiResponse<JobRun>(true, run, null));
+    }
+
+    [HttpPost("run/reconcile-refunds")]
+    public async Task<IActionResult> RunReconcileRefunds([FromQuery] int take = 200, CancellationToken cancellationToken = default)
+    {
+        var safeTake = Math.Clamp(take, 1, 1000);
+        var client = httpClientFactory.CreateClient(OrderServiceClientName);
+        using var response = await client.PostAsync(
+            $"api/orders/ops/reconcile-refunds?take={safeTake}",
+            content: null,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        var truncated = body.Length > 2000 ? body[..2000] : body;
+        var success = response.IsSuccessStatusCode;
+        var run = new JobRun(
+            Guid.NewGuid().ToString("N"),
+            "reconcile-refunds",
+            success ? "success" : "failed",
+            success ? truncated : $"HTTP {(int)response.StatusCode}: {truncated}",
+            DateTimeOffset.UtcNow);
+        await jobRunRepository.AppendAsync(run, cancellationToken);
+        return Accepted($"/api/jobs/runs/{run.Id}", new ApiResponse<JobRun>(true, run, null));
+    }
+
+    [HttpPost("run/reclaim-expired-inventory-reservations")]
+    public async Task<IActionResult> RunReclaimExpiredInventoryReservations([FromQuery] int take = 200, CancellationToken cancellationToken = default)
+    {
+        var safeTake = Math.Clamp(take, 1, 2000);
+        var client = httpClientFactory.CreateClient(InventoryServiceClientName);
+        using var response = await client.PostAsync(
+            $"api/inventory/ops/reclaim-expired-reservations?take={safeTake}",
+            content: null,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        var truncated = body.Length > 2000 ? body[..2000] : body;
+        var success = response.IsSuccessStatusCode;
+        var run = new JobRun(
+            Guid.NewGuid().ToString("N"),
+            "reclaim-expired-inventory-reservations",
             success ? "success" : "failed",
             success ? truncated : $"HTTP {(int)response.StatusCode}: {truncated}",
             DateTimeOffset.UtcNow);

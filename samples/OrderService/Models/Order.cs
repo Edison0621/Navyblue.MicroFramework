@@ -15,11 +15,13 @@ public sealed class Order
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? PaymentDueAt { get; set; }
     public DateTimeOffset? PaidAt { get; set; }
+    public string? PaymentTransactionId { get; set; }
     public Guid? AddressId { get; set; }
     public string? ShipToReceiverName { get; set; }
     public string? ShipToPhone { get; set; }
     public string? ShipToRegion { get; set; }
     public string? ShipToDetail { get; set; }
+    public List<AfterSaleRequest> AfterSales { get; set; } = [];
 }
 
 public sealed class SubOrder
@@ -38,6 +40,8 @@ public sealed class SubOrder
 public sealed class OrderLine
 {
     public string ProductId { get; set; } = string.Empty;
+    public string? SkuId { get; set; }
+    public string? SkuName { get; set; }
     public int Quantity { get; set; }
     public decimal UnitPrice { get; set; }
     public decimal LineTotal { get; set; }
@@ -60,4 +64,38 @@ public static class SubOrderFulfillmentStatus
     public const string Shipped = "Shipped";
     public const string Delivered = "Delivered";
     public const string Cancelled = "Cancelled";
+}
+
+public sealed class AfterSaleRequest
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string? SubOrderId { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public string? Detail { get; set; }
+    public decimal? RequestedAmount { get; set; }
+    public string Status { get; set; } = AfterSaleStatus.Pending;
+    public string RequestedByUserId { get; set; } = string.Empty;
+    public DateTimeOffset RequestedAt { get; set; } = DateTimeOffset.UtcNow;
+    public string? DecisionNote { get; set; }
+    public string? ReviewedByUserId { get; set; }
+    public DateTimeOffset? ReviewedAt { get; set; }
+    public string? RefundStatus { get; set; }
+    public string? RefundTransactionId { get; set; }
+    public DateTimeOffset? RefundedAt { get; set; }
+    public decimal? RefundedAmount { get; set; }
+}
+
+public static class AfterSaleStatus
+{
+    public const string Pending = "Pending";
+    public const string Approved = "Approved";
+    public const string Rejected = "Rejected";
+}
+
+public static class AfterSaleRefundStatus
+{
+    public const string NotRequired = "NotRequired";
+    public const string Pending = "Pending";
+    public const string Succeeded = "Succeeded";
+    public const string Failed = "Failed";
 }

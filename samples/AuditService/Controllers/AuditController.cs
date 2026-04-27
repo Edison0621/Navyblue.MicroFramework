@@ -88,6 +88,70 @@ public sealed class AuditController(IAuditRepository auditRepository) : Controll
         return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
     }
 
+    [HttpPost("subscriptions/order-aftersale-requested")]
+    [Topic("orderpubsub", "order.aftersale.requested")]
+    public async Task<IActionResult> OnAfterSaleRequested([FromBody] AfterSaleRequestedEvent payload, CancellationToken cancellationToken)
+    {
+        var request = new AuditEventRequest(
+            ActorId: payload.UserId,
+            Action: "order.aftersale.requested",
+            ResourceType: "order",
+            ResourceId: payload.OrderId,
+            Result: "success",
+            Detail: $"afterSaleId={payload.AfterSaleId};subOrderId={payload.SubOrderId ?? "-"};reason={payload.Reason};requestedAmount={payload.RequestedAmount?.ToString() ?? "-"}");
+        var entry = BuildAuditEvent(request);
+        await auditRepository.AppendAsync(entry, cancellationToken);
+        return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
+    }
+
+    [HttpPost("subscriptions/order-aftersale-reviewed")]
+    [Topic("orderpubsub", "order.aftersale.reviewed")]
+    public async Task<IActionResult> OnAfterSaleReviewed([FromBody] AfterSaleReviewedEvent payload, CancellationToken cancellationToken)
+    {
+        var request = new AuditEventRequest(
+            ActorId: payload.ReviewedByUserId,
+            Action: "order.aftersale.reviewed",
+            ResourceType: "order",
+            ResourceId: payload.OrderId,
+            Result: payload.Status,
+            Detail: $"afterSaleId={payload.AfterSaleId};status={payload.Status};note={payload.Note ?? "-"}");
+        var entry = BuildAuditEvent(request);
+        await auditRepository.AppendAsync(entry, cancellationToken);
+        return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
+    }
+
+    [HttpPost("subscriptions/order-refunded")]
+    [Topic("orderpubsub", "order.refunded")]
+    public async Task<IActionResult> OnOrderRefunded([FromBody] OrderRefundedEvent payload, CancellationToken cancellationToken)
+    {
+        var request = new AuditEventRequest(
+            ActorId: "system",
+            Action: "order.refunded",
+            ResourceType: "order",
+            ResourceId: payload.OrderId,
+            Result: "success",
+            Detail: $"afterSaleId={payload.AfterSaleId};amount={payload.Amount};refundTx={payload.RefundTransactionId};userId={payload.UserId ?? "-"}");
+        var entry = BuildAuditEvent(request);
+        await auditRepository.AppendAsync(entry, cancellationToken);
+        return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
+    }
+
+    [HttpPost("subscriptions/order-payment-failed")]
+    [Topic("orderpubsub", "order.payment.failed")]
+    public async Task<IActionResult> OnOrderPaymentFailed([FromBody] OrderPaymentFailedEvent payload, CancellationToken cancellationToken)
+    {
+        var request = new AuditEventRequest(
+            ActorId: "system",
+            Action: "order.payment.failed",
+            ResourceType: "order",
+            ResourceId: payload.OrderId,
+            Result: payload.Status,
+            Detail: $"userId={payload.UserId ?? "-"};tx={payload.TransactionId ?? "-"};reason={payload.Reason}");
+        var entry = BuildAuditEvent(request);
+        await auditRepository.AppendAsync(entry, cancellationToken);
+        return Ok(new ApiResponse<object>(true, new { message = "consumed" }, null));
+    }
+
     [HttpGet("events")]
     public async Task<IActionResult> GetAuditEvents(
         [FromQuery] string? actorId,

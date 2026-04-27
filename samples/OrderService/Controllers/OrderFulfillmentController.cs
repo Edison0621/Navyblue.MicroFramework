@@ -2,6 +2,7 @@ using DaprFx.Core;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OrderService.Models;
+using OrderService.Services;
 
 namespace OrderService.Controllers;
 
@@ -28,6 +29,11 @@ public sealed class OrderFulfillmentController(
         if (order is null)
         {
             return NotFound(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.NotFound, "Order not found.")));
+        }
+
+        if (!OrderAccess.CanAccessOrder(User, order))
+        {
+            return OrderAccess.Forbidden();
         }
 
         if (order.Status != OrderStatus.Confirmed)
@@ -73,6 +79,11 @@ public sealed class OrderFulfillmentController(
         if (order is null)
         {
             return NotFound(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.NotFound, "Order not found.")));
+        }
+
+        if (!OrderAccess.CanAccessOrder(User, order))
+        {
+            return OrderAccess.Forbidden();
         }
 
         if (order.Status != OrderStatus.Confirmed && order.Status != OrderStatus.Completed)

@@ -23,6 +23,10 @@ public static class ApiErrorCodes
     public const string CannotCancel = "cannot_cancel";
     public const string PaymentRequired = "payment_required";
     public const string InvalidAddress = "invalid_address";
+    public const string InvalidAfterSale = "invalid_after_sale";
+    public const string InvalidAfterSaleState = "invalid_after_sale_state";
+    public const string InvalidSignature = "invalid_signature";
+    public const string UserDisabled = "user_disabled";
 }
 public sealed record PagedResult<T>(IReadOnlyCollection<T> Items, int Page, int PageSize, int Total);
 public sealed record PageQuery(int Page = 1, int PageSize = 50)

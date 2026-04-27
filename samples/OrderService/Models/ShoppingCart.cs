@@ -10,6 +10,7 @@ public sealed class ShoppingCart
 public sealed class CartLine
 {
     public string ProductId { get; set; } = string.Empty;
+    public string? SkuId { get; set; }
     public int Quantity { get; set; }
 }
 
@@ -21,6 +22,7 @@ public sealed class ReplaceCartRequest
 public sealed class CartLineDto
 {
     public string ProductId { get; set; } = string.Empty;
+    public string? SkuId { get; set; }
     public int Quantity { get; set; }
 }
 

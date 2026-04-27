@@ -32,7 +32,20 @@ public sealed class DaprCatalogRepository(DaprClient daprClient) : ICatalogRepos
     public async Task<CatalogItem> UpsertAsync(string id, UpsertCatalogItemRequest request, CancellationToken cancellationToken)
     {
         var shopId = string.IsNullOrWhiteSpace(request.ShopId) ? "shop-default" : request.ShopId.Trim();
-        var item = new CatalogItem(id, request.Name, request.Price, request.IsActive, DateTimeOffset.UtcNow, shopId);
+        var normalizedSkus = (request.Skus ?? [])
+            .Where(x => !string.IsNullOrWhiteSpace(x.SkuId))
+            .GroupBy(x => x.SkuId.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g =>
+            {
+                var first = g.First();
+                var name = string.IsNullOrWhiteSpace(first.Name) ? g.Key : first.Name.Trim();
+                var price = first.Price ?? request.Price;
+                return new CatalogSku(g.Key, name, Math.Round(price, 2), first.IsActive);
+            })
+            .OrderBy(x => x.SkuId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var item = new CatalogItem(id, request.Name, request.Price, request.IsActive, DateTimeOffset.UtcNow, shopId, normalizedSkus);
         await daprClient.SaveStateAsync(StateStoreName, BuildItemKey(id), item, cancellationToken: cancellationToken);
 
         var ids = await daprClient.GetStateAsync<HashSet<string>>(StateStoreName, CatalogIndexStateKey, cancellationToken: cancellationToken) ?? [];

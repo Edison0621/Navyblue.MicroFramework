@@ -117,16 +117,16 @@ If you run services directly with `dotnet run`, ensure the Dapr runtime dependen
 ## 5-Minute Demo Flow
 
 1. Start the full stack (script or compose).
-2. Seed inventory and catalog (`shopId` drives per-shop sub-orders; without a catalog row, ProductService is used and the shop is `shop-default`):
+2. Seed inventory and catalog (Sprint C adds SKU support; inventory key can be `productId::skuId`):
 
 ```bash
-curl -X PUT http://localhost:5009/api/inventory/p-100 -H "Content-Type: application/json" -d "{\"quantity\":100}"
+curl -X PUT http://localhost:5009/api/inventory/p-100::p-100-red-128 -H "Content-Type: application/json" -d "{\"quantity\":100}"
 curl -X PUT http://localhost:5009/api/inventory/p-200 -H "Content-Type: application/json" -d "{\"quantity\":100}"
-curl -X PUT http://localhost:5008/api/catalog/items/p-100 -H "Content-Type: application/json" -d "{\"name\":\"Demo A\",\"price\":50,\"isActive\":true,\"shopId\":\"shop-east\"}"
+curl -X PUT http://localhost:5008/api/catalog/items/p-100 -H "Content-Type: application/json" -d "{\"name\":\"Demo A\",\"price\":50,\"isActive\":true,\"shopId\":\"shop-east\",\"skus\":[{\"skuId\":\"p-100-red-128\",\"name\":\"Red/128G\",\"price\":56,\"isActive\":true}]}"
 curl -X PUT http://localhost:5008/api/catalog/items/p-200 -H "Content-Type: application/json" -d "{\"name\":\"Demo B\",\"price\":80,\"isActive\":true,\"shopId\":\"shop-west\"}"
 ```
 
-3. **Login, shipping address, cart checkout (Sprint B)** — cart and checkout bind to the JWT `NameIdentifier`; you cannot impersonate another user via path or body. Checkout requires **`addressId`**; OrderService loads the address from UserService over Dapr and snapshots it on the order (`shipTo*` fields). Examples go through **Gateway** (`5006`). Set `ACCESS_TOKEN` from `data.accessToken` after login.
+3. **Login, shipping address, cart checkout (Sprint B + Sprint C SKU)** — cart and checkout bind to the JWT `NameIdentifier`; you cannot impersonate another user via path or body. Checkout requires **`addressId`**; OrderService loads the address from UserService over Dapr and snapshots it on the order (`shipTo*` fields). Line items now support optional `skuId`, and SKU price/inventory is used when provided.
 
 ```bash
 curl -X POST http://localhost:5005/api/users/seed
@@ -135,7 +135,7 @@ curl -s -X POST http://localhost:5006/api/gw/auth/login -H "Content-Type: applic
 curl -X POST http://localhost:5006/api/gw/users/me/addresses -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"receiverName\":\"Zhang\",\"phone\":\"13800000000\",\"region\":\"Shanghai\",\"detail\":\"No.1 Demo Rd\",\"isDefault\":true}"
 # Use data.id from the response as ADDRESS_ID
 
-curl -X PUT http://localhost:5006/api/gw/carts/me -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"lines\":[{\"productId\":\"p-100\",\"quantity\":1},{\"productId\":\"p-200\",\"quantity\":2}]}"
+curl -X PUT http://localhost:5006/api/gw/carts/me -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"lines\":[{\"productId\":\"p-100\",\"skuId\":\"p-100-red-128\",\"quantity\":1},{\"productId\":\"p-200\",\"quantity\":2}]}"
 curl -X POST http://localhost:5006/api/gw/orders/checkout -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"promoCode\":\"WELCOME10\",\"addressId\":\"ADDRESS_ID\"}"
 ```
 
@@ -159,11 +159,63 @@ Or trigger via **JobService** (Docker sets `Jobs__OrderServiceBaseUrl` to OrderS
 curl -X POST "http://localhost:5011/api/jobs/run/expire-awaiting-payments?maxAgeMinutes=30"
 ```
 
-4. **Single-SKU order** — JWT required; `userId` comes from the token (body `userId` is ignored).
+4. **Create order (SKU supported)** — JWT required; `userId` comes from the token (body `userId` is ignored).
 
 ```bash
-curl -X POST http://localhost:5006/api/gw/orders -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"productId\":\"p-100\",\"quantity\":2,\"promoCode\":\"WELCOME10\"}"
+curl -X POST http://localhost:5006/api/gw/orders -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"productId\":\"p-100\",\"skuId\":\"p-100-red-128\",\"quantity\":2,\"promoCode\":\"WELCOME10\"}"
 ```
+
+4b. **Query enhancement (Sprint D)**:
+
+- Order search: `/api/gw/orders/me/search` and `/api/gw/orders/by-user/{userId}/search` (admin), supports `status`, `productId`, `skuId`, `from`, `to`, `page`, `pageSize`.
+- Catalog search: `/api/gw/catalog/items` supports `q`, `shopId`, `skuId`, `isActive`, `page`, `pageSize`.
+
+```bash
+curl "http://localhost:5006/api/gw/orders/me/search?status=AwaitingPayment&productId=p-100&skuId=p-100-red-128&page=1&pageSize=20" -H "Authorization: Bearer ACCESS_TOKEN"
+curl "http://localhost:5006/api/gw/catalog/items?q=Demo&shopId=shop-east&skuId=p-100-red-128&page=1&pageSize=20" -H "Authorization: Bearer ACCESS_TOKEN"
+```
+
+4c. **After-sales workflow (Sprint E)**: order owner can submit after-sale requests; admin can approve/reject. Supports whole-order or sub-order scoped requests.
+
+```bash
+curl -X POST http://localhost:5006/api/gw/orders/<orderId>/after-sales -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"subOrderId\":\"<subOrderId>\",\"reason\":\"damaged package\",\"detail\":\"box broken\",\"requestedAmount\":20}"
+curl http://localhost:5006/api/gw/orders/<orderId>/after-sales -H "Authorization: Bearer ACCESS_TOKEN"
+
+# admin review
+curl -X POST http://localhost:5006/api/gw/orders/<orderId>/after-sales/<afterSaleId>/approve -H "Authorization: Bearer ADMIN_ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"note\":\"approved\"}"
+```
+
+Sprint E events are wired to downstream consumers:
+
+- `order.aftersale.requested`: persisted by Audit and notified by Notification service
+- `order.aftersale.reviewed`: review result persisted by Audit and notified by Notification service
+
+4d. **Payment/refund money-flow placeholder (Sprint F)**:
+
+- Payment: `/api/orders/{orderId}/pay` executes capture through `IPaymentGateway` abstraction and stores `paymentTransactionId` (currently simulated gateway).
+- Payment callback skeleton: `POST /api/orders/payments/callback` with HMAC verification via `x-payment-signature` + `x-payment-timestamp` and callback idempotency by `callbackId`.
+- Callback failure branch: for `status=failed/cancelled`, reserved inventory is released, order is marked `Failed`, and `order.payment.failed` is published (plus `order.cancelled` for downstream compatibility).
+- Refund: when after-sale is approved and `requestedAmount > 0`, refund is auto-triggered and stored on the after-sale record (`refundStatus/refundTransactionId/refundedAmount/refundedAt`).
+- Refund event: `order.refunded` is published and consumed by Audit/Notification.
+
+4e. **Refund idempotency + reconciliation job (Sprint G)**:
+
+- Refund idempotency: refund result is persisted by `orderId + afterSaleId`; repeated approve/retry reuses the stored refund transaction and avoids duplicate gateway refund calls.
+- Approve idempotency: approving an already-approved after-sale returns current state as successful idempotent response instead of conflict.
+- Reconciliation API: `POST /api/orders/ops/reconcile-refunds?take=200` (admin) scans refund ledger entries against order after-sale refund state.
+- Gateway/Job trigger: `POST /api/gw/jobs/run/reconcile-refunds?take=200` runs the reconciliation via JobService and stores a run record summary.
+
+4f. **Expired inventory reservation reclaim (Sprint G.3)**:
+
+- Reservation ledger: each `reserve` call now records a reservation entry (default TTL 30 minutes; optional `ttlMinutes` override).
+- Normal release: `release` prefers matching by `reservationId`; without id, it releases earliest-expiring active reservations first.
+- Reclaim API: `POST /api/inventory/ops/reclaim-expired-reservations?take=200` scans reservation ledgers and adds expired unreleased quantities back to stock.
+- Gateway/Job trigger: `POST /api/gw/jobs/run/reclaim-expired-inventory-reservations?take=200` executes the reclaim workflow and persists a Job run summary.
+
+4g. **Account status enforcement (PRD security gap)**:
+
+- Critical order-domain write operations (cart update, order creation/checkout, pay, after-sale apply) now validate user status via internal UserService API.
+- Only `status=active` can proceed; blocked/frozen users receive 403 with `user_disabled`.
 
 Fetch one order by id (owner or **admin** JWT):
 

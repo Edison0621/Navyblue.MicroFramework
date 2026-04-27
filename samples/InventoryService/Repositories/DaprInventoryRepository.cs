@@ -19,5 +19,28 @@ public sealed class DaprInventoryRepository(DaprClient daprClient) : IInventoryR
         return stock;
     }
 
+    public async Task<InventoryReservationBucket> GetReservationBucketAsync(string productId, CancellationToken cancellationToken)
+    {
+        return await daprClient.GetStateAsync<InventoryReservationBucket>(StateStoreName, BuildReservationBucketKey(productId), cancellationToken: cancellationToken)
+            ?? new InventoryReservationBucket { ProductId = productId };
+    }
+
+    public async Task SaveReservationBucketAsync(string productId, InventoryReservationBucket bucket, CancellationToken cancellationToken)
+    {
+        await daprClient.SaveStateAsync(StateStoreName, BuildReservationBucketKey(productId), bucket, cancellationToken: cancellationToken);
+    }
+
+    public async Task<InventoryReservationLedger> GetReservationLedgerAsync(CancellationToken cancellationToken)
+    {
+        return await daprClient.GetStateAsync<InventoryReservationLedger>(StateStoreName, InventoryReservationLedger.ProductIndexStateKey, cancellationToken: cancellationToken)
+            ?? new InventoryReservationLedger();
+    }
+
+    public async Task SaveReservationLedgerAsync(InventoryReservationLedger ledger, CancellationToken cancellationToken)
+    {
+        await daprClient.SaveStateAsync(StateStoreName, InventoryReservationLedger.ProductIndexStateKey, ledger, cancellationToken: cancellationToken);
+    }
+
     private static string BuildStockKey(string productId) => $"inventory:stock:{productId}";
+    private static string BuildReservationBucketKey(string productId) => $"inventory:reservation:{productId}";
 }

@@ -8,7 +8,7 @@ Content-Type: application/json
 
 {
   "lines": [
-    { "productId": "p-100", "quantity": 1 },
+    { "productId": "p-100", "skuId": "p-100-red-128", "quantity": 1 },
     { "productId": "p-200", "quantity": 2 }
   ]
 }
@@ -67,6 +67,7 @@ Content-Type: application/json
 
 {
   "productId": "p-100",
+  "skuId": "p-100-red-128",
   "quantity": 2,
   "promoCode": null
 }

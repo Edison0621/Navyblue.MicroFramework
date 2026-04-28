@@ -4,6 +4,7 @@ import { api } from '../../lib/api'
 import type { Order } from '../../types'
 import { money } from '../../shared/utils/format'
 import { useToast } from '../../shared/ui/ToastProvider'
+import { EmptyState, PageHeader, StatusPill, SurfaceCard } from '../../shared/ui/Storefront'
 
 export function OrdersPage() {
   const [status, setStatus] = useState('')
@@ -27,8 +28,8 @@ export function OrdersPage() {
 
   return (
     <section>
-      <h2>我的订单</h2>
-      <div className="row">
+      <PageHeader title="我的订单" subtitle="统一查看全部订单状态和售后入口" />
+      <div className="toolbar surface-card">
         <select value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">全部</option>
           <option value="AwaitingPayment">待付款</option>
@@ -41,13 +42,18 @@ export function OrdersPage() {
         </button>
       </div>
       {error && <p className="error">{error}</p>}
+      {!error && orders.length === 0 ? <EmptyState title="暂无订单" description="先去首页逛逛，选点好货再回来" actionText="去首页" actionTo="/" /> : null}
       {orders.map((order) => (
-        <article className="card" key={order.id}>
+        <SurfaceCard key={order.id}>
           <h3>{order.id}</h3>
-          <p>状态: {order.status}</p>
+          <p>
+            状态: <StatusPill text={order.status} />
+          </p>
           <p>实付: {money(order.finalAmount)}</p>
-          <Link to={`/orders/${order.id}`}>详情</Link>
-        </article>
+          <Link className="btn btn-primary" to={`/orders/${order.id}`}>
+            详情
+          </Link>
+        </SurfaceCard>
       ))}
     </section>
   )
@@ -81,10 +87,12 @@ export function OrderDetailPage() {
 
   return (
     <section>
-      <h2>订单详情</h2>
-      <div className="card">
+      <PageHeader title="订单详情" subtitle={`订单号 ${order.id}`} />
+      <SurfaceCard>
         <p>订单号: {order.id}</p>
-        <p>状态: {order.status}</p>
+        <p>
+          状态: <StatusPill text={order.status} />
+        </p>
         <p>金额: {money(order.finalAmount)}</p>
         <div className="row">
           <button type="button" onClick={() => void api.simulatePay(order.id).then(load)}>
@@ -107,9 +115,9 @@ export function OrderDetailPage() {
             </button>
           ) : null}
         </div>
-      </div>
+      </SurfaceCard>
 
-      <div className="card">
+      <SurfaceCard>
         <h3>评价</h3>
         <label>
           评分
@@ -132,9 +140,9 @@ export function OrderDetailPage() {
         >
           提交评价
         </button>
-      </div>
+      </SurfaceCard>
 
-      <div className="card">
+      <SurfaceCard>
         <h3>售后申请</h3>
         <label>
           原因
@@ -155,7 +163,7 @@ export function OrderDetailPage() {
         >
           申请售后
         </button>
-      </div>
+      </SurfaceCard>
       {error && <p className="error">{error}</p>}
     </section>
   )

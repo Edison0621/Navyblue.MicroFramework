@@ -1,32 +1,45 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../../app/AuthContext'
 import { api } from '../../lib/api'
+import { getGuestCartLines, setGuestCartLines } from '../../lib/guestCart'
 import type { CartLine, CatalogItem, InvoiceTitle, UserAddress } from '../../types'
-import { money } from '../../shared/utils/format'
 import { useToast } from '../../shared/ui/ToastProvider'
+import { EmptyState, PageHeader, PriceText, SurfaceCard } from '../../shared/ui/Storefront'
 
 export function CartPage() {
   const [lines, setLines] = useState<CartLine[]>([])
   const [products, setProducts] = useState<Record<string, CatalogItem>>({})
   const [invalid, setInvalid] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const navigate = useNavigate()
+  const { isAuthed } = useAuth()
 
   useEffect(() => {
     const run = async () => {
-      const cart = await api.getCart()
-      setLines(cart.lines)
-      const dict: Record<string, CatalogItem> = {}
-      await Promise.all(
-        cart.lines.map(async (line) => {
-          const item = await api.getCatalogItem(line.productId)
-          dict[line.productId] = item
-        }),
-      )
-      setProducts(dict)
-      setInvalid(cart.lines.filter((x) => !dict[x.productId]?.isActive).map((x) => x.productId))
+      setLoading(true)
+      setError('')
+      try {
+        const cartLines = isAuthed ? (await api.getCart()).lines : getGuestCartLines()
+        setLines(cartLines)
+        const dict: Record<string, CatalogItem> = {}
+        await Promise.all(
+          cartLines.map(async (line) => {
+            const item = await api.getCatalogItem(line.productId)
+            dict[line.productId] = item
+          }),
+        )
+        setProducts(dict)
+        setInvalid(cartLines.filter((x) => !dict[x.productId]?.isActive).map((x) => x.productId))
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '购物车加载失败')
+      } finally {
+        setLoading(false)
+      }
     }
     void run()
-  }, [])
+  }, [isAuthed])
 
   const total = useMemo(
     () =>
@@ -40,14 +53,21 @@ export function CartPage() {
 
   const save = async (next: CartLine[]) => {
     setLines(next)
-    await api.replaceCart(next.map((x) => ({ productId: x.productId, skuId: x.skuId ?? undefined, quantity: x.quantity })))
+    if (isAuthed) {
+      await api.replaceCart(next.map((x) => ({ productId: x.productId, skuId: x.skuId ?? undefined, quantity: x.quantity })))
+    } else {
+      setGuestCartLines(next)
+    }
   }
 
   return (
     <section>
-      <h2>购物车</h2>
+      <PageHeader title="购物车" subtitle={isAuthed ? '已登录购物车' : '游客购物车，登录后可直接下单'} />
+      {loading ? <p className="muted">加载中...</p> : null}
+      {error ? <p className="error">{error}</p> : null}
+      {!loading && !lines.length ? <EmptyState title="购物车还是空的" description="先去挑点心仪商品吧" actionText="去逛逛" actionTo="/products" /> : null}
       {lines.map((line, idx) => (
-        <article className="card" key={`${line.productId}-${line.skuId ?? 'na'}`}>
+        <SurfaceCard key={`${line.productId}-${line.skuId ?? 'na'}`}>
           <h3>{products[line.productId]?.name ?? line.productId}</h3>
           {invalid.includes(line.productId) ? <p className="error">商品已失效</p> : null}
           <div className="row">
@@ -62,12 +82,17 @@ export function CartPage() {
               删除
             </button>
           </div>
-        </article>
+        </SurfaceCard>
       ))}
-      <p>预估到手价: {money(total)}</p>
-      <button type="button" disabled={!lines.length} onClick={() => navigate('/checkout')}>
-        去结算
-      </button>
+      {lines.length ? (
+        <SurfaceCard>
+          <p className="muted">预估到手价</p>
+          <PriceText value={total} />
+          <button type="button" className="btn btn-primary" onClick={() => navigate('/checkout')}>
+            去结算
+          </button>
+        </SurfaceCard>
+      ) : null}
     </section>
   )
 }
@@ -83,9 +108,13 @@ export function CheckoutPage() {
   const [orderId, setOrderId] = useState('')
   const navigate = useNavigate()
   const { notify } = useToast()
+  const { isAuthed } = useAuth()
 
   useEffect(() => {
     const run = async () => {
+      if (!isAuthed) {
+        return
+      }
       const list = await api.listMyAddresses()
       setAddresses(list)
       if (list[0]) setSelectedAddressId(list[0].id)
@@ -94,9 +123,13 @@ export function CheckoutPage() {
       if (inv[0]) setInvoiceId(inv[0].id)
     }
     void run()
-  }, [])
+  }, [isAuthed])
 
   const place = async () => {
+    if (!isAuthed) {
+      setError('请先登录后再下单')
+      return
+    }
     try {
       const order = await api.checkout(promoCode || null, selectedAddressId)
       setOrderId(order.id)
@@ -108,8 +141,16 @@ export function CheckoutPage() {
 
   return (
     <section>
-      <h2>结算台</h2>
-      <div className="card">
+      <PageHeader title="结算台" subtitle="收货、发票、优惠信息确认后提交订单" />
+      {!isAuthed ? (
+        <SurfaceCard>
+          <p>当前为游客模式，可浏览与加购，提交订单前请先登录。</p>
+          <Link className="btn btn-primary" to="/login">
+            去登录
+          </Link>
+        </SurfaceCard>
+      ) : null}
+      <SurfaceCard>
         <h3>地址</h3>
         {addresses.map((a) => (
           <label className="address-option" key={a.id}>
@@ -117,8 +158,8 @@ export function CheckoutPage() {
             {a.receiverName} {a.phone} {a.region} {a.detail}
           </label>
         ))}
-      </div>
-      <div className="card">
+      </SurfaceCard>
+      <SurfaceCard>
         <label>
           优惠码
           <input value={promoCode} onChange={(e) => setPromoCode(e.target.value)} />
@@ -139,7 +180,7 @@ export function CheckoutPage() {
           <input value={remark} onChange={(e) => setRemark(e.target.value)} />
         </label>
         <p className="muted">备注/发票字段已前端接入，待后端扩展持久化。</p>
-        <button type="button" onClick={() => void place()} disabled={!selectedAddressId}>
+        <button type="button" className="btn btn-primary" onClick={() => void place()} disabled={!selectedAddressId || !isAuthed}>
           提交订单
         </button>
         {orderId ? (
@@ -153,7 +194,7 @@ export function CheckoutPage() {
           </div>
         ) : null}
         {error && <p className="error">{error}</p>}
-      </div>
+      </SurfaceCard>
     </section>
   )
 }

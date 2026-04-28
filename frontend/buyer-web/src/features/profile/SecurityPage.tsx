@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api } from '../../lib/api'
 import { useToast } from '../../shared/ui/ToastProvider'
+import { PageHeader, SurfaceCard } from '../../shared/ui/Storefront'
 
 export function SecurityPage() {
   const [reason, setReason] = useState('不再使用该账户')
@@ -9,11 +10,11 @@ export function SecurityPage() {
 
   return (
     <section>
-      <h2>账户安全</h2>
-      <div className="card">
+      <PageHeader title="账户安全" subtitle="密码找回、绑定信息与注销申请入口" />
+      <SurfaceCard>
         <p>找回密码/绑定手机/绑定邮箱：当前版本为流程入口占位。</p>
-      </div>
-      <div className="card">
+      </SurfaceCard>
+      <SurfaceCard>
         <h3>注销申请</h3>
         <label>
           原因
@@ -34,7 +35,7 @@ export function SecurityPage() {
           提交注销申请
         </button>
         {submitted ? <p>申请已提交，等待平台审核。</p> : null}
-      </div>
+      </SurfaceCard>
     </section>
   )
 }

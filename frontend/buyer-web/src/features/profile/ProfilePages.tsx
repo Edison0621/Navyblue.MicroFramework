@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import type { InvoiceTitle, UserAddress, UserProfile } from '../../types'
 import { useToast } from '../../shared/ui/ToastProvider'
+import { EmptyState, PageHeader, SurfaceCard } from '../../shared/ui/Storefront'
 
 export function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile>({
@@ -24,8 +25,8 @@ export function ProfilePage() {
 
   return (
     <section>
-      <h2>个人中心</h2>
-      <div className="card">
+      <PageHeader title="个人中心" subtitle="账号信息、地址、安全建议统一管理" />
+      <SurfaceCard>
         <label>
           昵称
           <input value={profile.username} onChange={(e) => setProfile((p) => ({ ...p, username: e.target.value }))} />
@@ -49,20 +50,21 @@ export function ProfilePage() {
         <button type="button" onClick={() => void api.updateProfile(profile).then(() => notify('资料已保存', 'success'))}>
           保存资料
         </button>
-      </div>
-      <div className="card">
+      </SurfaceCard>
+      <SurfaceCard>
         <h3>收货地址</h3>
+        {!addresses.length ? <EmptyState title="暂无收货地址" description="请前往结算页新增地址" /> : null}
         {addresses.map((a) => (
           <p key={a.id}>
             {a.receiverName} {a.phone} {a.region} {a.detail}
           </p>
         ))}
-      </div>
-      <div className="card">
+      </SurfaceCard>
+      <SurfaceCard>
         <h3>账户安全</h3>
         <input value={securityHint} onChange={(e) => setSecurityHint(e.target.value)} />
         <p className="muted">修改密码/绑定手机/注销账户：已预留流程入口。</p>
-      </div>
+      </SurfaceCard>
     </section>
   )
 }
@@ -88,8 +90,8 @@ export function InvoicePage() {
 
   return (
     <section>
-      <h2>发票抬头</h2>
-      <div className="card">
+      <PageHeader title="发票抬头" subtitle="支持个人/企业抬头维护" />
+      <SurfaceCard>
         <label>
           类型
           <select value={type} onChange={(e) => setType(e.target.value as 'personal' | 'company')}>
@@ -110,11 +112,11 @@ export function InvoicePage() {
         <button type="button" onClick={() => void save()} disabled={!name}>
           保存抬头
         </button>
-      </div>
+      </SurfaceCard>
       {list.map((item) => (
-        <div className="card" key={item.id}>
+        <SurfaceCard key={item.id}>
           {item.type === 'personal' ? '个人' : '企业'} - {item.name}
-        </div>
+        </SurfaceCard>
       ))}
     </section>
   )

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import type { LoyaltyInfo } from '../../types'
+import { PageHeader, SurfaceCard, StatusPill } from '../../shared/ui/Storefront'
 
 export function MembershipPage() {
   const [loyalty, setLoyalty] = useState<LoyaltyInfo>({ level: '普通会员', points: 0, growthValue: 0 })
@@ -11,20 +12,22 @@ export function MembershipPage() {
 
   return (
     <section>
-      <h2>会员中心</h2>
-      <div className="card">
-        <p>当前等级: {loyalty.level}</p>
+      <PageHeader title="会员中心" subtitle="权益、积分、成长体系总览" />
+      <SurfaceCard>
+        <p>
+          当前等级: <StatusPill text={loyalty.level} />
+        </p>
         <p>积分: {loyalty.points}</p>
         <p>成长值: {loyalty.growthValue}</p>
-      </div>
-      <div className="card">
+      </SurfaceCard>
+      <SurfaceCard>
         <h3>会员权益</h3>
         <ul>
           <li>会员专属价</li>
           <li>积分兑换优惠券</li>
           <li>活动提前购</li>
         </ul>
-      </div>
+      </SurfaceCard>
     </section>
   )
 }

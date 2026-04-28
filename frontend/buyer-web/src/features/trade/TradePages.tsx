@@ -13,6 +13,7 @@ export function CartPage() {
   const [invalid, setInvalid] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const navigate = useNavigate()
   const { isAuthed } = useAuth()
 
@@ -32,6 +33,8 @@ export function CartPage() {
         )
         setProducts(dict)
         setInvalid(cartLines.filter((x) => !dict[x.productId]?.isActive).map((x) => x.productId))
+        // 默认选中所有有效商品
+        setSelectedItems(new Set(cartLines.filter((x) => dict[x.productId]?.isActive).map((x) => `${x.productId}-${x.skuId ?? 'na'}`)))
       } catch (err) {
         setError(err instanceof Error ? err.message : '购物车加载失败')
       } finally {
@@ -41,14 +44,27 @@ export function CartPage() {
     void run()
   }, [isAuthed])
 
+  // 按店铺分组
+  const groupedByShop = useMemo(() => {
+    const groups: Record<string, CartLine[]> = {}
+    lines.forEach((line) => {
+      const shopId = products[line.productId]?.shopId ?? 'unknown'
+      if (!groups[shopId]) groups[shopId] = []
+      groups[shopId].push(line)
+    })
+    return groups
+  }, [lines, products])
+
   const total = useMemo(
     () =>
       lines.reduce((sum, line) => {
+        const key = `${line.productId}-${line.skuId ?? 'na'}`
+        if (!selectedItems.has(key)) return sum
         const item = products[line.productId]
         const skuPrice = item?.skus?.find((sku) => sku.skuId === line.skuId)?.price
         return sum + (skuPrice ?? item?.price ?? 0) * line.quantity
       }, 0),
-    [lines, products],
+    [lines, products, selectedItems],
   )
 
   const save = async (next: CartLine[]) => {
@@ -60,36 +76,98 @@ export function CartPage() {
     }
   }
 
+  const toggleSelect = (key: string) => {
+    const next = new Set(selectedItems)
+    if (next.has(key)) {
+      next.delete(key)
+    } else {
+      next.add(key)
+    }
+    setSelectedItems(next)
+  }
+
+  const selectAll = () => {
+    const allKeys = lines
+      .filter((x) => !invalid.includes(x.productId))
+      .map((x) => `${x.productId}-${x.skuId ?? 'na'}`)
+    setSelectedItems(new Set(allKeys))
+  }
+
+  const deselectAll = () => {
+    setSelectedItems(new Set())
+  }
+
   return (
     <section>
       <PageHeader title="购物车" subtitle={isAuthed ? '已登录购物车' : '游客购物车，登录后可直接下单'} />
       {loading ? <p className="muted">加载中...</p> : null}
       {error ? <p className="error">{error}</p> : null}
       {!loading && !lines.length ? <EmptyState title="购物车还是空的" description="先去挑点心仪商品吧" actionText="去逛逛" actionTo="/products" /> : null}
-      {lines.map((line, idx) => (
-        <SurfaceCard key={`${line.productId}-${line.skuId ?? 'na'}`}>
-          <h3>{products[line.productId]?.name ?? line.productId}</h3>
-          {invalid.includes(line.productId) ? <p className="error">商品已失效</p> : null}
+
+      {lines.length > 0 && (
+        <div className="cart-toolbar surface-card">
           <div className="row">
-            <button type="button" onClick={() => void save(lines.map((x, i) => (i === idx ? { ...x, quantity: Math.max(1, x.quantity - 1) } : x)))}>
-              -
-            </button>
-            <span>{line.quantity}</span>
-            <button type="button" onClick={() => void save(lines.map((x, i) => (i === idx ? { ...x, quantity: x.quantity + 1 } : x)))}>
-              +
-            </button>
-            <button type="button" onClick={() => void save(lines.filter((_, i) => i !== idx))}>
-              删除
-            </button>
+            <button type="button" onClick={selectAll}>全选</button>
+            <button type="button" onClick={deselectAll}>全不选</button>
           </div>
+          <p className="muted">已选择 {selectedItems.size} 件商品</p>
+        </div>
+      )}
+
+      {/* 按店铺分组显示 */}
+      {Object.entries(groupedByShop).map(([shopId, shopLines]) => (
+        <SurfaceCard key={shopId} className="cart-shop-group">
+          <div className="shop-header">
+            <h3>店铺: {shopId}</h3>
+            <span className="promotion-tag">满199减20</span>
+          </div>
+          {shopLines.map((line, idx) => {
+            const key = `${line.productId}-${line.skuId ?? 'na'}`
+            const isSelected = selectedItems.has(key)
+            return (
+              <div key={key} className={`cart-item ${isSelected ? 'selected' : ''} ${invalid.includes(line.productId) ? 'invalid' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => toggleSelect(key)}
+                  disabled={invalid.includes(line.productId)}
+                />
+                <div className="cart-item-image">📦</div>
+                <div className="cart-item-info">
+                  <h4>{products[line.productId]?.name ?? line.productId}</h4>
+                  {invalid.includes(line.productId) ? <p className="error">商品已失效</p> : null}
+                  <p className="muted">规格: 默认</p>
+                </div>
+                <div className="cart-item-price">
+                  <PriceText value={products[line.productId]?.price ?? 0} />
+                </div>
+                <div className="cart-item-quantity">
+                  <button type="button" onClick={() => void save(lines.map((x, i) => (i === lines.indexOf(line) ? { ...x, quantity: Math.max(1, x.quantity - 1) } : x)))}>
+                    -
+                  </button>
+                  <span>{line.quantity}</span>
+                  <button type="button" onClick={() => void save(lines.map((x, i) => (i === lines.indexOf(line) ? { ...x, quantity: x.quantity + 1 } : x)))}>
+                    +
+                  </button>
+                </div>
+                <button type="button" className="cart-item-delete" onClick={() => void save(lines.filter((_, i) => i !== lines.indexOf(line)))}>
+                  删除
+                </button>
+              </div>
+            )
+          })}
         </SurfaceCard>
       ))}
+
       {lines.length ? (
-        <SurfaceCard>
-          <p className="muted">预估到手价</p>
-          <PriceText value={total} />
-          <button type="button" className="btn btn-primary" onClick={() => navigate('/checkout')}>
-            去结算
+        <SurfaceCard className="cart-summary">
+          <div className="summary-row">
+            <span className="muted">合计:</span>
+            <PriceText value={total} />
+          </div>
+          <p className="muted">促销: 满199减20, 满399减50</p>
+          <button type="button" className="btn btn-primary btn-large" onClick={() => navigate('/checkout')} disabled={selectedItems.size === 0}>
+            结算 ({selectedItems.size})
           </button>
         </SurfaceCard>
       ) : null}

@@ -1,128 +1,227 @@
-# DaprFx
+﻿# Navyblue · DaprFx
 
-[English](./README.en.md) | 中文
+**语言：** [English](./README.en.md) | 简体中文
 
-`DaprFx` 是一个构建在 Dapr 之上的轻量级 .NET 微服务框架（当前示例基于 `.NET 10`）。
-它提供类似 Spring Cloud 的开发体验，重点能力包括：
+## 项目概览
 
-- 接口代理式服务调用（service invocation）
-- 调用级重试 / 超时 / 熔断
-- 多 appId 客户端注册与负载均衡（RoundRobin/Random/Sticky）
-- 基于 Dapr 的事件发布订阅
-- Outbox 可靠投递、幂等与死信处理
-- 泛型状态存储抽象
-- Dapr 配置中心接入与动态刷新
-- 加解密服务抽象
+**DaprFx** 是一套面向 **.NET**（示例基于 **.NET 10**）、构建于 **[Dapr](https://dapr.io/)** 之上的轻量级微服务**工具集与参考实现**。目标是在不绑定单一厂商运行时的情况下，提供接近 **Spring Cloud** 的开发体验：类型化抽象、弹性调用、事件总线、Outbox、状态存储与可观测性挂钩。
 
-## 目录结构
+本仓库包含：**框架库**（`src/DaprFx.*`）、**领域示例服务**（`samples/*`）、**Docker Compose 编排**、**可选可观测性栈**、以及 **React 前端**，用于端到端演示与二次开发基线。
 
-- `src/DaprFx.Core`：核心抽象与选项定义
-- `src/DaprFx.ServiceInvocation`：动态调用代理实现
-- `src/DaprFx.EventBus`：事件总线、Outbox、死信能力
-- `src/DaprFx.StateManagement`：类型化状态存储
-- `src/DaprFx.Configuration`：配置中心 provider 与刷新机制
-- `src/DaprFx.Cryptography`：密码学抽象实现
-- `src/DaprFx.Hosting`：一站式扩展（DI + Hosting）
-- `samples/OrderService`：订单服务示例（调用方）
-- `samples/ProductService`：商品服务示例（被调方）
+---
 
-## 快速开始（推荐：Docker Compose）
+## 核心能力
 
-### 1) 一键启动（Windows PowerShell）
+| 领域 | 说明 |
+|------|------|
+| **服务调用** | 面向接口的动态代理；调用级重试、超时、熔断 |
+| **客户端拓扑** | 多 `appId` 注册与 **RoundRobin / Random / Sticky** 负载均衡 |
+| **消息** | Dapr Pub/Sub 与 **Outbox** 可靠投递 |
+| **韧性** | 幂等存储、死信处理、可配置退避 |
+| **状态** | 泛型 Dapr 状态存储抽象与仓储模式示例 |
+| **配置** | Dapr Configuration Provider 与安全刷新 |
+| **安全** | 加解密抽象；示例服务采用 JWT 服务间身份模型 |
+| **网关** | BFF 式转发、限流、结构化错误体 |
+
+---
+
+## 仓库结构
+
+| 路径 | 职责 |
+|------|------|
+| `src/DaprFx.Core` | 核心抽象、选项与基础类型 |
+| `src/DaprFx.ServiceInvocation` | 动态调用代理与策略 |
+| `src/DaprFx.EventBus` | 事件总线、Outbox、幂等与死信 |
+| `src/DaprFx.StateManagement` | 类型化状态访问 |
+| `src/DaprFx.Configuration` | 配置 Provider 与刷新 |
+| `src/DaprFx.Cryptography` | 加解密实现 |
+| `src/DaprFx.Hosting` | Hosting / DI 一站式扩展 |
+| `src/DaprFx.Operations` | Ops 看板扩展点（示例） |
+| `samples/*Service` | 订单、目录、网关、认证等参考微服务 |
+| `components/` | Dapr 组件（Redis 状态、Pub/Sub 等） |
+| `deploy/` | 多节点 / 基础设施向的 Compose 片段 |
+| `observability/` | Prometheus、Grafana、Loki、Alertmanager、Collector 配置 |
+| `docs/ops/` | SLO、事故分级、Runbook、演练与复盘模板 |
+| `scripts/` | 本地生命周期脚本（`dev-up.ps1`、`dev-down.ps1` 等） |
+
+---
+
+## 环境要求
+
+- **Docker Desktop**（或兼容引擎）与 **Compose V2**
+- **.NET SDK 10**（容器外本地编译）
+- **Node.js 20+**（前端开发）
+- 宿主机默认占用端口：**5000–5013**、**6379**、**4317**、**16686** 等需可用
+
+---
+
+## 快速开始（Docker Compose）
+
+### Windows（推荐）
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\dev-up.ps1
 ```
 
-可选：若镜像已就绪，跳过 build：
+镜像已就绪时可跳过构建：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\dev-up.ps1 -NoBuild
 ```
 
-### 2) 一键停止
+停止：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\dev-down.ps1
 ```
 
-### 3) 运行模式说明（localhost / 生产）
+脚本会预拉取 .NET 基础镜像、执行 `docker compose up`，并对关键 HTTP 端点做**可达性探测**。
 
-#### A. localhost 开发模式（单机调试）
-
-适用于：你在一台开发机上调试服务，希望 Redis 等组件直接使用 `localhost`。
-
-- 组件目录：`components/local`（`redisHost=localhost:6379`）
-- 启动命令：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\dev-local.ps1
-```
-
-- 停止命令：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\dev-local-down.ps1
-```
-
-#### B. 生产/多机域名模式（推荐部署）
-
-适用于：订单与商品分机器部署，通过域名访问基础设施（Consul/Redis/OTel）。
-
-- 组件目录：`components/cluster` 与 `deploy/*/components`（`redisHost=redis.infra.local:6379`）
-- 先准备各节点 `.env`（以 `.env.example` 为模板）
-- 启动命令（按节点执行）：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\dev-cluster.ps1 -Node infra
-powershell -ExecutionPolicy Bypass -File .\scripts\dev-cluster.ps1 -Node order
-powershell -ExecutionPolicy Bypass -File .\scripts\dev-cluster.ps1 -Node product
-```
-
-- 关键环境变量：
-  - `CONSUL_HOST`（如 `consul.infra.local`）
-  - `REDIS_HOST`（如 `redis.infra.local`）
-  - `OTEL_HOST`（如 `otel.infra.local`）
-  - `INFRA_HOST_IP`（域名映射目标 IP）
-
-### 4) 访问地址
-
-- OrderService: [http://localhost:5001](http://localhost:5001)
-- ProductService: [http://localhost:5002](http://localhost:5002)
-- ProductService Canary: [http://localhost:5003](http://localhost:5003)
-- AuthService: [http://localhost:5004](http://localhost:5004)
-- UserService: [http://localhost:5005](http://localhost:5005)
-- GatewayService: [http://localhost:5006](http://localhost:5006)
-- AuditService: [http://localhost:5007](http://localhost:5007)
-- CatalogService: [http://localhost:5008](http://localhost:5008)
-- InventoryService: [http://localhost:5009](http://localhost:5009)
-- NotificationService: [http://localhost:5010](http://localhost:5010)
-- JobService: [http://localhost:5011](http://localhost:5011)
-- PromotionService: [http://localhost:5012](http://localhost:5012)
-- Platform Buyer Admin: [http://localhost:5013](http://localhost:5013)
-- Ops Portal: [http://localhost:5000](http://localhost:5000)
-- Jaeger UI: [http://localhost:16686](http://localhost:16686)
-
-## 手动启动方式（不使用脚本）
+### 任意平台
 
 ```bash
 docker compose up --build -d
 docker compose ps
 ```
 
-停止：
-
 ```bash
 docker compose down
 ```
 
-## 本地开发（仅 dotnet run）说明
+---
 
-如果你直接 `dotnet run`，请确保以下依赖已就绪，否则会出现 Dapr gRPC 连接失败（如 10061）：
+## 运行模式
 
-- Dapr sidecar 正在运行（`dapr run ...`）
-- Redis / 配置组件可达
-- 组件地址与运行环境匹配（容器内一般是 `redis:6379`，宿主机通常是 `localhost:6379`）
+| 模式 | 适用场景 | 说明 |
+|------|----------|------|
+| **Compose 默认** | 单机联调；Redis / Jaeger / Collector 作为容器服务 | `docker-compose.yml` + `components/` |
+| **localhost 组件** | 宿主机 `dotnet run` + 本机 Redis | `components/local`，见 `scripts/dev-local.ps1` |
+| **类生产多机** | 域名访问 Consul / Redis / OTLP | `components/cluster`、`deploy/*`，见 `scripts/dev-cluster.ps1` |
+
+集群模式请按节点准备 `.env`（模板见 `.env.example`）。常见变量：`CONSUL_HOST`、`REDIS_HOST`、`OTEL_HOST`、`INFRA_HOST_IP`。
+
+---
+
+## 服务与端口（默认宿主机映射）
+
+| 服务 | 地址 | 说明 |
+|------|------|------|
+| Ops Portal | http://localhost:5000 | 聚合运维入口 |
+| OrderService | http://localhost:5001 | 订单、Outbox、支付示例 |
+| ProductService | http://localhost:5002 | 商品示例（被调方） |
+| ProductService Canary | http://localhost:5003 | 灰度实例 |
+| AuthService | http://localhost:5004 | 登录、刷新、JWT |
+| UserService | http://localhost:5005 | 用户、地址、内部校验 |
+| **GatewayService** | **http://localhost:5006** | **对外 BFF / 统一入口** |
+| AuditService | http://localhost:5007 | 审计事件 |
+| CatalogService | http://localhost:5008 | 商品目录与治理 |
+| InventoryService | http://localhost:5009 | 库存与预留 |
+| NotificationService | http://localhost:5010 | 通知 |
+| JobService | http://localhost:5011 | 运维任务 / 对账类 Job |
+| PromotionService | http://localhost:5012 | 营销活动 |
+| **Platform Admin** | http://localhost:5013 | 平台管理后台（静态资源 / Nginx） |
+| Jaeger UI | http://localhost:16686 | 链路追踪 |
+| OTLP Collector | grpc://localhost:4317 | 遥测接入 |
+
+**前端（Vite 开发态）：** `frontend/buyer-web`、`frontend/merchant-admin` 等默认 `npm run dev` 在 **5173+** 端口；通过环境变量 `VITE_GATEWAY_BASE_URL=http://localhost:5006` 指向网关。
+
+---
+
+## 可观测性与运维
+
+- **主栈**已包含 **Jaeger**、**OpenTelemetry Collector**（配置见 `observability/otel-collector-config.yaml`）。
+- **可选增强栈**（Prometheus / Grafana / Loki / Alertmanager）：
+
+```bash
+docker compose -f observability/docker-compose.observability.yml up -d
+```
+
+- **运维文档**：`docs/ops/`（SLO 目录、事故分级、服务 Owner、Runbook、演练清单、复盘模板等）。
+- **契约回归提示**：`CONTRACT_TEST_CHECKLIST.md`。
+
+---
+
+## 网关统一错误体（联调）
+
+当下游不可达或网关自身失败时，可能返回如下 JSON（非全部 `ApiResponse` 包装）：
+
+```json
+{
+  "errorCode": "gateway_timeout",
+  "message": "Gateway timed out while waiting for downstream service.",
+  "detail": "…",
+  "correlationId": "…"
+}
+```
+
+常见 `errorCode`：`gateway_timeout`（504）、`downstream_unavailable` / `downstream_circuit_open`（502/503）、`gateway_forwarding_failed`、`rate_limited`（429）、`client_blocked`（403）。
+
+**建议：** 请求携带 `x-correlation-id`，并结合 **Jaeger** / 容器日志做跨服务关联。
+
+---
+
+## 本地开发（仅 `dotnet run`）
+
+若不在 Compose 内运行，请自行保证：
+
+- Dapr Sidecar 已启动（如 `dapr run …`），且与 `Dapr:GrpcEndpoint` / `Dapr:HttpEndpoint` 配置一致；
+- **Redis** 与 `components/*` 中的地址一致（容器网络多为 `redis:6379`，宿主机多为 `localhost:6379`）。
+
+否则易出现 gRPC **连接被拒绝**（如 Windows 错误码 10061）。
+
+---
+
+## API 响应约定（示例服务）
+
+多数示例 HTTP API 使用统一信封：
+
+**成功：** `{ "success": true, "data": <载荷>, "error": null, "traceId"?: "…" }`  
+**失败：** `{ "success": false, "data": null, "error": { "code", "message", "details?" }, "traceId"?: "…" }`
+
+常见 `error.code`：`not_found`、`invalid_request`、`unauthorized`、`conflict`、`upstream_error`、`internal_error`、`insufficient_inventory`、`order_creation_failed` 等。C# 中请优先使用各服务 **`ApiErrorCodes.*`** 常量，避免魔法字符串。
+
+**分页：** 查询参数 `page`、`pageSize`；`data` 内通常含 `items`、`page`、`pageSize`、`total`（默认 `page=1`，`pageSize` 上限多为 **200**）。
+
+**例外：** `POST /api/promotions/validate` 返回裸 **`PromotionValidationResult`** JSON，便于 Dapr `Invoke` 等场景直接反序列化。
+
+**网关 GET：** 对显式 `ForwardGet` 路由，会将入站 QueryString 透传拼接到上游 URL。
+
+---
+
+## 最小验证
+
+```bash
+curl -X POST http://localhost:5005/api/users/seed
+curl -X POST http://localhost:5005/api/users/seed-admin
+curl -s -X POST http://localhost:5006/api/gw/auth/login \
+  -H "Content-Type: application/json" \
+  -d "{\"account\":\"demo\",\"password\":\"demo123\"}"
+```
+
+将响应中 `data.accessToken` 作为后续 `Authorization: Bearer …` 调用 `http://localhost:5006/api/gw/...`。
+
+---
+
+## 前端应用
+
+| 路径 | 说明 |
+|------|------|
+| `frontend/buyer-web` | 买家商城（React + Vite + TypeScript） |
+| `frontend/merchant-admin` | 商家后台（订单、商品、营销等） |
+| `frontend/platform-admin` | 平台运营后台（用户治理、审核等；生产镜像映射 **5013**） |
+
+```bash
+cd frontend/buyer-web
+npm install && npm run dev
+```
+
+更多：`frontend/buyer-web/docs/`、`docs/buyer-management-contract.md`、`docs/prd-closure-status.md`。
+
+---
+
+## 附录 A：端到端联调与场景命令（详尽）
+
+以下保留历史版本中的 **Sprint / 场景化 curl 编排**、网关安全、各域快速验证等，供深度联调与培训使用。
 
 ## 5 分钟体验流程
 
@@ -512,77 +611,21 @@ curl -X PUT "http://localhost:5006/api/gw/security/config/exempt-paths" -H "Auth
 - 限流默认豁免路径可通过 `Security.RateLimitExemptPaths` 配置（默认含健康检查）
 - 限流支持按策略分级（`auth` / `write` / `read`），可通过 `Security.RateLimitPolicies` 调整阈值
 
-## API Response Conventions
-
-`audit` / `auth` / `catalog` / `inventory` / `job` / `notification` / `user` / `order` / `product` / `promotion` services now use a unified response style:
-
-- Success shape:
-  - `success: true`
-  - `data: <payload>`
-  - `error: null`
-  - `traceId: <optional trace id>`
-- Failure shape:
-  - `success: false`
-  - `data: null`
-  - `error: { code, message, details? }`
-  - `traceId: <optional trace id>`
-
-Standard error codes:
-
-- `not_found`
-- `invalid_request`
-- `unauthorized`
-- `conflict`
-- `upstream_error`
-- `internal_error`
-- `invalid_response`
-- `invalid_quantity`
-- `insufficient_inventory`
-- `invalid_promotion`
-- `inventory_reservation_failed`
-- `order_creation_failed`
-
-In C# sample services, use `ApiErrorCodes.*` constants instead of string literals for these codes.
-
-Pagination conventions for list endpoints:
-
-- Query params: `page`, `pageSize`
-- Response payload in `data`: `items`, `page`, `pageSize`, `total`
-- Current defaults: `page=1`, `pageSize=50`, max `pageSize=200`
-
-Exception (service-to-service): `POST /api/promotions/validate` returns a root JSON object matching `PromotionValidationResult` (fields `valid`, `reason`, `code`, `discountType`, `discountValue`, `orderAmount`, `discountAmount`, `finalAmount`) so Dapr `Invoke` clients (for example OrderService) can deserialize the body directly without an `ApiResponse` wrapper.
-
-Gateway `GET` forwards: incoming query strings are appended to the upstream URL for all explicit `ForwardGet` routes (users, orders, catalog, inventory, promotions, notifications, jobs).
+> **说明：** API 信封、错误码与分页约定已上移至正文「API 响应约定」一节，此处不再重复。
 
 ## 契约测试清单
 
 - 最小契约测试清单见：`CONTRACT_TEST_CHECKLIST.md`
 
-## 前端（买家端全量计划基线）
-
-仓库已新增买家端前端应用：
-
-- `frontend/buyer-web`：买家端全量计划基线（React + Vite + TypeScript）
-- `frontend/merchant-admin`：商家端目录骨架
-- `frontend/platform-admin`：平台买家管理后台（用户列表/标签/黑名单/等级/注销审批）
-
-本地启动买家端：
-
-```bash
-cd frontend/buyer-web
-npm install
-npm run dev
-```
-
-可选环境变量（默认值如下）：
-
-```bash
-VITE_GATEWAY_BASE_URL=http://localhost:5006
-```
-
-前端补充文档：
+## 前端补充文档
 
 - `frontend/buyer-web/docs/api-gap-checklist.md`
 - `frontend/buyer-web/docs/release-checklist.md`
 - `docs/buyer-management-contract.md`
 - `docs/prd-closure-status.md`
+
+---
+
+## 使用声明
+
+本仓库用于**学习、演示与二次开发基线**。若用于生产环境，请自行完成密钥与配置治理、容量与弹性规划、安全审计、SLO/告警及值班流程等配套建设；示例中的默认密钥与宽松限流**不可**直接用于生产。

@@ -24,6 +24,36 @@ Write-Host "Running: docker $($composeArgs -join ' ')" -ForegroundColor Yellow
 docker @composeArgs
 
 Write-Host ""
+Write-Host "Waiting for critical endpoints to become healthy..." -ForegroundColor Yellow
+$checks = @(
+    @{ Name = "Gateway"; Url = "http://localhost:5006/health/live" },
+    @{ Name = "AuthService"; Url = "http://localhost:5004/health/live" },
+    @{ Name = "UserService"; Url = "http://localhost:5005/health/live" },
+    @{ Name = "CatalogService"; Url = "http://localhost:5008/health/live" },
+    @{ Name = "OpsPortal"; Url = "http://localhost:5000" }
+)
+
+foreach ($check in $checks) {
+    $ok = $false
+    for ($i = 0; $i -lt 30; $i++) {
+        try {
+            $resp = Invoke-WebRequest -Uri $check.Url -Method Get -TimeoutSec 3 -UseBasicParsing
+            if ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 500) {
+                $ok = $true
+                break
+            }
+        } catch {
+            Start-Sleep -Seconds 2
+        }
+    }
+    if ($ok) {
+        Write-Host " - $($check.Name) is reachable" -ForegroundColor Green
+    } else {
+        Write-Host " - $($check.Name) did not become reachable in time" -ForegroundColor Red
+    }
+}
+
+Write-Host ""
 Write-Host "Current services:" -ForegroundColor Cyan
 docker compose ps
 

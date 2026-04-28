@@ -4,7 +4,13 @@ using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDaprClient();
+var daprGrpcEndpoint = builder.Configuration["Dapr:GrpcEndpoint"] ?? "http://localhost:50001";
+var daprHttpEndpoint = builder.Configuration["Dapr:HttpEndpoint"] ?? "http://localhost:3511";
+builder.Services.AddDaprClient(clientBuilder =>
+{
+    clientBuilder.UseGrpcEndpoint(daprGrpcEndpoint);
+    clientBuilder.UseHttpEndpoint(daprHttpEndpoint);
+});
 builder.Services.AddHttpClient("orderservice", (sp, client) =>
 {
     var baseUrl = builder.Configuration["Jobs:OrderServiceBaseUrl"]?.Trim().TrimEnd('/');
@@ -14,7 +20,7 @@ builder.Services.AddHttpClient("orderservice", (sp, client) =>
     }
 
     client.BaseAddress = new Uri(baseUrl + "/", UriKind.Absolute);
-    client.Timeout = TimeSpan.FromSeconds(60);
+    client.Timeout = TimeSpan.FromSeconds(12);
 });
 builder.Services.AddHttpClient("inventoryservice", (sp, client) =>
 {
@@ -25,7 +31,7 @@ builder.Services.AddHttpClient("inventoryservice", (sp, client) =>
     }
 
     client.BaseAddress = new Uri(baseUrl + "/", UriKind.Absolute);
-    client.Timeout = TimeSpan.FromSeconds(60);
+    client.Timeout = TimeSpan.FromSeconds(12);
 });
 builder.Services.AddHttpClient("catalogservice", (sp, client) =>
 {
@@ -36,7 +42,7 @@ builder.Services.AddHttpClient("catalogservice", (sp, client) =>
     }
 
     client.BaseAddress = new Uri(baseUrl + "/", UriKind.Absolute);
-    client.Timeout = TimeSpan.FromSeconds(60);
+    client.Timeout = TimeSpan.FromSeconds(12);
 });
 builder.Services.AddControllers();
 builder.Services.AddScoped<IJobRunRepository, DaprJobRunRepository>();

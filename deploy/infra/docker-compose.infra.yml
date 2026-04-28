@@ -1,6 +1,7 @@
 services:
   consul-server:
     image: hashicorp/consul:1.19
+    restart: unless-stopped
     command: "agent -server -ui -bootstrap-expect=1 -client=0.0.0.0"
     ports:
       - "${CONSUL_UI_PORT:-8500}:8500"
@@ -8,18 +9,31 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
       - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
 
   jaeger:
     image: jaegertracing/all-in-one:1.58
+    restart: unless-stopped
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     ports:
       - "${JAEGER_UI_PORT:-16686}:16686"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:16686"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.102.1
+    restart: unless-stopped
     command:
       - "--config=/etc/otelcol/config.yaml"
     volumes:
@@ -27,4 +41,10 @@ services:
     ports:
       - "${OTLP_GRPC_PORT:-4317}:4317"
     depends_on:
-      - jaeger
+      jaeger:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:13133/"]
+      interval: 10s
+      timeout: 4s
+      retries: 10

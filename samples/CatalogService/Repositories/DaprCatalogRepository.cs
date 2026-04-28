@@ -1,22 +1,29 @@
+using System.Net.Sockets;
 using CatalogService.Models;
 using Dapr.Client;
 
 namespace CatalogService.Repositories;
 
-public sealed class DaprCatalogRepository(DaprClient daprClient) : ICatalogRepository
+public sealed class DaprCatalogRepository(DaprClient daprClient, ILogger<DaprCatalogRepository> logger) : ICatalogRepository
 {
     private const string StateStoreName = "statestore";
     private const string CatalogIndexStateKey = "catalog:index";
     private const string CategoryIndexStateKey = "catalog:category:index";
     private const string CategoryItemIndexPrefix = "catalog:category:items:";
+    private static readonly TimeSpan[] RetryDelays =
+    [
+        TimeSpan.FromMilliseconds(120),
+        TimeSpan.FromMilliseconds(280),
+        TimeSpan.FromMilliseconds(550)
+    ];
 
     public async Task<List<CatalogItem>> GetAllAsync(CancellationToken cancellationToken)
     {
-        var ids = await daprClient.GetStateAsync<HashSet<string>>(StateStoreName, CatalogIndexStateKey, cancellationToken: cancellationToken) ?? [];
+        var ids = await GetStateAsync<HashSet<string>>(CatalogIndexStateKey, cancellationToken) ?? [];
         var items = new List<CatalogItem>();
         foreach (var id in ids)
         {
-            var item = await daprClient.GetStateAsync<CatalogItem>(StateStoreName, BuildItemKey(id), cancellationToken: cancellationToken);
+            var item = await GetStateAsync<CatalogItem>(BuildItemKey(id), cancellationToken);
             if (item is not null)
             {
                 items.Add(NormalizeLegacyItem(item));
@@ -28,7 +35,7 @@ public sealed class DaprCatalogRepository(DaprClient daprClient) : ICatalogRepos
 
     public async Task<CatalogItem?> GetByIdAsync(string id, CancellationToken cancellationToken)
     {
-        var item = await daprClient.GetStateAsync<CatalogItem>(StateStoreName, BuildItemKey(id), cancellationToken: cancellationToken);
+        var item = await GetStateAsync<CatalogItem>(BuildItemKey(id), cancellationToken);
         return item is null ? null : NormalizeLegacyItem(item);
     }
 
@@ -67,10 +74,10 @@ public sealed class DaprCatalogRepository(DaprClient daprClient) : ICatalogRepos
         item.IsOnShelf = item.IsOnShelf && item.IsActive;
         await SaveAsync(item, cancellationToken);
 
-        var ids = await daprClient.GetStateAsync<HashSet<string>>(StateStoreName, CatalogIndexStateKey, cancellationToken: cancellationToken) ?? [];
+        var ids = await GetStateAsync<HashSet<string>>(CatalogIndexStateKey, cancellationToken) ?? [];
         if (ids.Add(id))
         {
-            await daprClient.SaveStateAsync(StateStoreName, CatalogIndexStateKey, ids, cancellationToken: cancellationToken);
+            await SaveStateAsync(CatalogIndexStateKey, ids, cancellationToken);
         }
 
         return item;
@@ -80,7 +87,7 @@ public sealed class DaprCatalogRepository(DaprClient daprClient) : ICatalogRepos
     {
         var existing = await GetByIdAsync(item.Id, cancellationToken);
         item = NormalizeLegacyItem(item);
-        await daprClient.SaveStateAsync(StateStoreName, BuildItemKey(item.Id), item, cancellationToken: cancellationToken);
+        await SaveStateAsync(BuildItemKey(item.Id), item, cancellationToken);
         if (!string.Equals(existing?.CategoryId, item.CategoryId, StringComparison.OrdinalIgnoreCase))
         {
             if (!string.IsNullOrWhiteSpace(existing?.CategoryId))
@@ -99,7 +106,7 @@ public sealed class DaprCatalogRepository(DaprClient daprClient) : ICatalogRepos
 
     public async Task<List<CatalogCategory>> GetAllCategoriesAsync(CancellationToken cancellationToken)
     {
-        var ids = await daprClient.GetStateAsync<HashSet<string>>(StateStoreName, CategoryIndexStateKey, cancellationToken: cancellationToken) ?? [];
+        var ids = await GetStateAsync<HashSet<string>>(CategoryIndexStateKey, cancellationToken) ?? [];
         var list = new List<CatalogCategory>();
         foreach (var id in ids)
         {
@@ -119,7 +126,7 @@ public sealed class DaprCatalogRepository(DaprClient daprClient) : ICatalogRepos
 
     public async Task<CatalogCategory?> GetCategoryByIdAsync(string id, CancellationToken cancellationToken)
     {
-        return await daprClient.GetStateAsync<CatalogCategory>(StateStoreName, BuildCategoryKey(id), cancellationToken: cancellationToken);
+        return await GetStateAsync<CatalogCategory>(BuildCategoryKey(id), cancellationToken);
     }
 
     public async Task<CatalogCategory> UpsertCategoryAsync(string id, UpsertCatalogCategoryRequest request, CancellationToken cancellationToken)
@@ -137,11 +144,11 @@ public sealed class DaprCatalogRepository(DaprClient daprClient) : ICatalogRepos
 
     public async Task<CatalogCategory> SaveCategoryAsync(CatalogCategory category, CancellationToken cancellationToken)
     {
-        await daprClient.SaveStateAsync(StateStoreName, BuildCategoryKey(category.Id), category, cancellationToken: cancellationToken);
-        var ids = await daprClient.GetStateAsync<HashSet<string>>(StateStoreName, CategoryIndexStateKey, cancellationToken: cancellationToken) ?? [];
+        await SaveStateAsync(BuildCategoryKey(category.Id), category, cancellationToken);
+        var ids = await GetStateAsync<HashSet<string>>(CategoryIndexStateKey, cancellationToken) ?? [];
         if (ids.Add(category.Id))
         {
-            await daprClient.SaveStateAsync(StateStoreName, CategoryIndexStateKey, ids, cancellationToken: cancellationToken);
+            await SaveStateAsync(CategoryIndexStateKey, ids, cancellationToken);
         }
 
         return category;
@@ -149,7 +156,7 @@ public sealed class DaprCatalogRepository(DaprClient daprClient) : ICatalogRepos
 
     public async Task<List<CatalogItem>> GetItemsByCategoryIdAsync(string categoryId, CancellationToken cancellationToken)
     {
-        var ids = await daprClient.GetStateAsync<HashSet<string>>(StateStoreName, BuildCategoryItemIndexKey(categoryId), cancellationToken: cancellationToken) ?? [];
+        var ids = await GetStateAsync<HashSet<string>>(BuildCategoryItemIndexKey(categoryId), cancellationToken) ?? [];
         var list = new List<CatalogItem>();
         foreach (var id in ids)
         {
@@ -199,10 +206,10 @@ public sealed class DaprCatalogRepository(DaprClient daprClient) : ICatalogRepos
             return false;
         }
 
-        var ids = await daprClient.GetStateAsync<HashSet<string>>(StateStoreName, CategoryIndexStateKey, cancellationToken: cancellationToken) ?? [];
+        var ids = await GetStateAsync<HashSet<string>>(CategoryIndexStateKey, cancellationToken) ?? [];
         ids.Remove(id);
-        await daprClient.SaveStateAsync(StateStoreName, CategoryIndexStateKey, ids, cancellationToken: cancellationToken);
-        await daprClient.DeleteStateAsync(StateStoreName, BuildCategoryKey(id), cancellationToken: cancellationToken);
+        await SaveStateAsync(CategoryIndexStateKey, ids, cancellationToken);
+        await DeleteStateAsync(BuildCategoryKey(id), cancellationToken);
         return true;
     }
 
@@ -213,20 +220,20 @@ public sealed class DaprCatalogRepository(DaprClient daprClient) : ICatalogRepos
     private async Task AddItemToCategoryIndexAsync(string categoryId, string itemId, CancellationToken cancellationToken)
     {
         var key = BuildCategoryItemIndexKey(categoryId);
-        var ids = await daprClient.GetStateAsync<HashSet<string>>(StateStoreName, key, cancellationToken: cancellationToken) ?? [];
+        var ids = await GetStateAsync<HashSet<string>>(key, cancellationToken) ?? [];
         if (ids.Add(itemId))
         {
-            await daprClient.SaveStateAsync(StateStoreName, key, ids, cancellationToken: cancellationToken);
+            await SaveStateAsync(key, ids, cancellationToken);
         }
     }
 
     private async Task RemoveItemFromCategoryIndexAsync(string categoryId, string itemId, CancellationToken cancellationToken)
     {
         var key = BuildCategoryItemIndexKey(categoryId);
-        var ids = await daprClient.GetStateAsync<HashSet<string>>(StateStoreName, key, cancellationToken: cancellationToken) ?? [];
+        var ids = await GetStateAsync<HashSet<string>>(key, cancellationToken) ?? [];
         if (ids.Remove(itemId))
         {
-            await daprClient.SaveStateAsync(StateStoreName, key, ids, cancellationToken: cancellationToken);
+            await SaveStateAsync(key, ids, cancellationToken);
         }
     }
 
@@ -251,5 +258,86 @@ public sealed class DaprCatalogRepository(DaprClient daprClient) : ICatalogRepos
             item.CategoryEnabled = true;
         }
         return item;
+    }
+
+    private Task<T> GetStateAsync<T>(string key, CancellationToken cancellationToken)
+    {
+        return ExecuteWithRetryAsync(
+            ct => daprClient.GetStateAsync<T>(StateStoreName, key, cancellationToken: ct),
+            $"GetState:{key}",
+            cancellationToken);
+    }
+
+    private Task SaveStateAsync<T>(string key, T value, CancellationToken cancellationToken)
+    {
+        return ExecuteWithRetryAsync(
+            ct => daprClient.SaveStateAsync(StateStoreName, key, value, cancellationToken: ct),
+            $"SaveState:{key}",
+            cancellationToken);
+    }
+
+    private Task DeleteStateAsync(string key, CancellationToken cancellationToken)
+    {
+        return ExecuteWithRetryAsync(
+            ct => daprClient.DeleteStateAsync(StateStoreName, key, cancellationToken: ct),
+            $"DeleteState:{key}",
+            cancellationToken);
+    }
+
+    private async Task<T> ExecuteWithRetryAsync<T>(
+        Func<CancellationToken, Task<T>> operation,
+        string operationName,
+        CancellationToken cancellationToken)
+    {
+        Exception? lastError = null;
+        for (var attempt = 0; attempt <= RetryDelays.Length; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                return await operation(cancellationToken);
+            }
+            catch (Exception ex) when (IsTransient(ex))
+            {
+                lastError = ex;
+                logger.LogWarning(ex, "Catalog state operation {OperationName} failed at attempt {Attempt}", operationName, attempt + 1);
+                if (attempt < RetryDelays.Length)
+                {
+                    await Task.Delay(RetryDelays[attempt], cancellationToken);
+                }
+            }
+        }
+
+        throw new InvalidOperationException($"Catalog state operation {operationName} failed after retries.", lastError);
+    }
+
+    private async Task ExecuteWithRetryAsync(
+        Func<CancellationToken, Task> operation,
+        string operationName,
+        CancellationToken cancellationToken)
+    {
+        await ExecuteWithRetryAsync<object?>(
+            async ct =>
+            {
+                await operation(ct);
+                return null;
+            },
+            operationName,
+            cancellationToken);
+    }
+
+    private static bool IsTransient(Exception ex)
+    {
+        if (ex.GetType().FullName?.Contains("DaprException", StringComparison.Ordinal) == true)
+        {
+            return true;
+        }
+
+        if (ex is HttpRequestException or TimeoutException or SocketException)
+        {
+            return true;
+        }
+
+        return ex.InnerException is not null && IsTransient(ex.InnerException);
     }
 }

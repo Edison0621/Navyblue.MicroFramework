@@ -8,7 +8,13 @@ using UserService.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDaprClient();
+var daprGrpcEndpoint = builder.Configuration["Dapr:GrpcEndpoint"] ?? "http://localhost:50001";
+var daprHttpEndpoint = builder.Configuration["Dapr:HttpEndpoint"] ?? "http://localhost:3505";
+builder.Services.AddDaprClient(clientBuilder =>
+{
+    clientBuilder.UseGrpcEndpoint(daprGrpcEndpoint);
+    clientBuilder.UseHttpEndpoint(daprHttpEndpoint);
+});
 builder.Services.AddControllers();
 builder.Services.AddScoped<IUserRepository, DaprUserRepository>();
 builder.Services.AddSingleton<IAddressBookRepository, DaprAddressBookRepository>();

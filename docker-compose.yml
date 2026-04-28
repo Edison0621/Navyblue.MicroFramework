@@ -1,18 +1,31 @@
 services:
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
 
   jaeger:
     image: jaegertracing/all-in-one:1.58
+    restart: unless-stopped
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     ports:
       - "16686:16686"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:16686"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.102.1
+    restart: unless-stopped
     command:
       - "--config=/etc/otelcol/config.yaml"
     volumes:
@@ -20,10 +33,17 @@ services:
     ports:
       - "4317:4317"
     depends_on:
-      - jaeger
+      jaeger:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:13133/"]
+      interval: 10s
+      timeout: 4s
+      retries: 10
 
   orderservice:
     image: orderservice:latest
+    restart: unless-stopped
     build:
       context: .
       dockerfile: samples/OrderService/Dockerfile
@@ -37,15 +57,22 @@ services:
       - Jwt__SigningKey=DaprFx.Dev.Secret.Key.ChangeMe.2026!
       - PaymentCallback__SharedSecret=DaprFx.Dev.Payment.Callback.Secret
     depends_on:
-      - redis
-      - inventoryservice
-      - catalogservice
-      - promotionservice
-      - userservice
-      - otel-collector
+      redis:
+        condition: service_healthy
+      inventoryservice:
+        condition: service_started
+      catalogservice:
+        condition: service_started
+      promotionservice:
+        condition: service_started
+      userservice:
+        condition: service_started
+      otel-collector:
+        condition: service_healthy
 
   orderservice-dapr:
-    image: daprio/daprd:latest
+    image: daprio/daprd:1.15.14
+    restart: unless-stopped
     command:
       - ./daprd
       - --app-id
@@ -78,7 +105,8 @@ services:
       - otel-collector
 
   productservice-dapr:
-    image: daprio/daprd:latest
+    image: daprio/daprd:1.15.14
+    restart: unless-stopped
     command:
       - ./daprd
       - --app-id
@@ -111,7 +139,8 @@ services:
       - otel-collector
 
   productservice-canary-dapr:
-    image: daprio/daprd:latest
+    image: daprio/daprd:1.15.14
+    restart: unless-stopped
     command:
       - ./daprd
       - --app-id
@@ -132,6 +161,7 @@ services:
 
   authservice:
     image: authservice:latest
+    restart: unless-stopped
     build:
       context: .
       dockerfile: samples/AuthService/Dockerfile
@@ -144,11 +174,14 @@ services:
       - Jwt__SigningKey=DaprFx.Dev.Secret.Key.ChangeMe.2026!
       - Jwt__ExpiresMinutes=60
     depends_on:
-      - redis
-      - otel-collector
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_healthy
 
   authservice-dapr:
-    image: daprio/daprd:latest
+    image: daprio/daprd:1.15.14
+    restart: unless-stopped
     command:
       - ./daprd
       - --app-id
@@ -169,6 +202,7 @@ services:
 
   userservice:
     image: userservice:latest
+    restart: unless-stopped
     build:
       context: .
       dockerfile: samples/UserService/Dockerfile
@@ -180,11 +214,14 @@ services:
       - Jwt__Audience=DaprFx.Services
       - Jwt__SigningKey=DaprFx.Dev.Secret.Key.ChangeMe.2026!
     depends_on:
-      - redis
-      - otel-collector
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_healthy
 
   userservice-dapr:
-    image: daprio/daprd:latest
+    image: daprio/daprd:1.15.14
+    restart: unless-stopped
     command:
       - ./daprd
       - --app-id
@@ -205,6 +242,7 @@ services:
 
   gatewayservice:
     image: gatewayservice:latest
+    restart: unless-stopped
     build:
       context: .
       dockerfile: samples/GatewayService/Dockerfile
@@ -216,13 +254,18 @@ services:
       - Jwt__Audience=DaprFx.Services
       - Jwt__SigningKey=DaprFx.Dev.Secret.Key.ChangeMe.2026!
     depends_on:
-      - authservice
-      - userservice
-      - orderservice
-      - otel-collector
+      authservice:
+        condition: service_started
+      userservice:
+        condition: service_started
+      orderservice:
+        condition: service_started
+      otel-collector:
+        condition: service_healthy
 
   gatewayservice-dapr:
-    image: daprio/daprd:latest
+    image: daprio/daprd:1.15.14
+    restart: unless-stopped
     command:
       - ./daprd
       - --app-id
@@ -255,7 +298,8 @@ services:
       - otel-collector
 
   auditservice-dapr:
-    image: daprio/daprd:latest
+    image: daprio/daprd:1.15.14
+    restart: unless-stopped
     command:
       - ./daprd
       - --app-id
@@ -276,6 +320,7 @@ services:
 
   catalogservice:
     image: catalogservice:latest
+    restart: unless-stopped
     build:
       context: .
       dockerfile: samples/CatalogService/Dockerfile
@@ -284,11 +329,14 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
     depends_on:
-      - redis
-      - otel-collector
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_healthy
 
   catalogservice-dapr:
-    image: daprio/daprd:latest
+    image: daprio/daprd:1.15.14
+    restart: unless-stopped
     command:
       - ./daprd
       - --app-id
@@ -309,6 +357,7 @@ services:
 
   inventoryservice:
     image: inventoryservice:latest
+    restart: unless-stopped
     build:
       context: .
       dockerfile: samples/InventoryService/Dockerfile
@@ -317,11 +366,14 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
     depends_on:
-      - redis
-      - otel-collector
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_healthy
 
   inventoryservice-dapr:
-    image: daprio/daprd:latest
+    image: daprio/daprd:1.15.14
+    restart: unless-stopped
     command:
       - ./daprd
       - --app-id
@@ -354,7 +406,8 @@ services:
       - otel-collector
 
   notificationservice-dapr:
-    image: daprio/daprd:latest
+    image: daprio/daprd:1.15.14
+    restart: unless-stopped
     command:
       - ./daprd
       - --app-id
@@ -393,7 +446,8 @@ services:
       - otel-collector
 
   jobservice-dapr:
-    image: daprio/daprd:latest
+    image: daprio/daprd:1.15.14
+    restart: unless-stopped
     command:
       - ./daprd
       - --app-id
@@ -414,6 +468,7 @@ services:
 
   promotionservice:
     image: promotionservice:latest
+    restart: unless-stopped
     build:
       context: .
       dockerfile: samples/PromotionService/Dockerfile
@@ -422,11 +477,14 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
     depends_on:
-      - redis
-      - otel-collector
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_healthy
 
   promotionservice-dapr:
-    image: daprio/daprd:latest
+    image: daprio/daprd:1.15.14
+    restart: unless-stopped
     command:
       - ./daprd
       - --app-id
@@ -447,6 +505,7 @@ services:
 
   opsportal:
     image: opsportal:latest
+    restart: unless-stopped
     build:
       context: .
       dockerfile: samples/OpsPortal/Dockerfile
@@ -493,7 +552,8 @@ services:
       - promotionservice
 
   opsportal-dapr:
-    image: daprio/daprd:latest
+    image: daprio/daprd:1.15.14
+    restart: unless-stopped
     command:
       - ./daprd
       - --app-id

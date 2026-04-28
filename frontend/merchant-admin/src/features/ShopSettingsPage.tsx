@@ -20,31 +20,92 @@ export function ShopSettingsPage() {
     localStorage.setItem(NOTICE_KEY, notice)
     recordAudit('merchant.shop.settings.updated', `${shopId}:${shopName}`)
     setMessage('保存成功')
+    
+    // 3秒后清除消息
+    setTimeout(() => setMessage(''), 3000)
   }
 
   return (
-    <section className="card">
-      <h3>店铺设置</h3>
-      <div className="row">
-        <label>店铺ID</label>
-        <input value={shopId} onChange={(e) => setShopIdInput(e.target.value)} />
+    <div>
+      <div className="page-header">
+        <h1 className="page-title">店铺设置</h1>
+        <p className="page-description">管理店铺基本信息和联系方式</p>
       </div>
-      <div className="row">
-        <label>店铺名称</label>
-        <input value={shopName} onChange={(e) => setShopName(e.target.value)} />
+
+      {message && (
+        <div className="message message-success">
+          <span>✅</span>
+          <span>{message}</span>
+        </div>
+      )}
+
+      <div className="card">
+        <div className="card-header">
+          <h3 className="card-title">基本信息</h3>
+        </div>
+        <div className="card-body">
+          <div className="form-group">
+            <label className="form-label form-label-required">店铺ID</label>
+            <input
+              className="form-input"
+              value={shopId}
+              onChange={(e) => setShopIdInput(e.target.value)}
+              placeholder="请输入店铺ID"
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label form-label-required">店铺名称</label>
+            <input
+              className="form-input"
+              value={shopName}
+              onChange={(e) => setShopName(e.target.value)}
+              placeholder="请输入店铺名称"
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label form-label-required">联系邮箱</label>
+            <input
+              className="form-input"
+              type="email"
+              value={contact}
+              onChange={(e) => setContact(e.target.value)}
+              placeholder="请输入联系邮箱"
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">店铺公告</label>
+            <textarea
+              className="form-textarea"
+              value={notice}
+              onChange={(e) => setNotice(e.target.value)}
+              placeholder="请输入店铺公告"
+            />
+          </div>
+
+          <div className="toolbar" style={{ marginTop: '24px' }}>
+            <button className="btn btn-primary" onClick={save}>
+              💾 保存设置
+            </button>
+          </div>
+        </div>
       </div>
-      <div className="row">
-        <label>联系邮箱</label>
-        <input value={contact} onChange={(e) => setContact(e.target.value)} />
+
+      <div className="card">
+        <div className="card-header">
+          <h3 className="card-title">说明</h3>
+        </div>
+        <div className="card-body">
+          <ul style={{ paddingLeft: '20px', lineHeight: '2' }}>
+            <li>店铺ID用于标识您的店铺，请妥善保管</li>
+            <li>店铺名称将显示在买家端</li>
+            <li>联系邮箱用于接收重要通知</li>
+            <li>店铺公告将展示在店铺首页</li>
+          </ul>
+        </div>
       </div>
-      <div className="row">
-        <label>店铺公告</label>
-        <textarea value={notice} onChange={(e) => setNotice(e.target.value)} />
-      </div>
-      <div className="row">
-        <button type="button" onClick={save}>保存设置</button>
-        {message && <span>{message}</span>}
-      </div>
-    </section>
+    </div>
   )
 }

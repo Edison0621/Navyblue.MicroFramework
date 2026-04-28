@@ -9,10 +9,20 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDaprClient();
+var daprGrpcEndpoint = builder.Configuration["Dapr:GrpcEndpoint"] ?? "http://localhost:50001";
+var daprHttpEndpoint = builder.Configuration["Dapr:HttpEndpoint"] ?? "http://localhost:3506";
+builder.Services.AddDaprClient(clientBuilder =>
+{
+    clientBuilder.UseGrpcEndpoint(daprGrpcEndpoint);
+    clientBuilder.UseHttpEndpoint(daprHttpEndpoint);
+});
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 builder.Services.AddHttpClient();
+builder.Services.AddHttpClient("gateway-forwarder", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(8);
+});
 var securityOptions = builder.Configuration.GetSection("Security").Get<GatewaySecurityOptions>() ?? new GatewaySecurityOptions();
 builder.Services.AddSingleton(securityOptions);
 builder.Services.AddSingleton<ClientBlacklist>();
@@ -1265,6 +1275,15 @@ internal static class ClientIdentityResolver
 
 internal static class GatewayForwarder
 {
+    private static readonly TimeSpan[] RetryDelays =
+    [
+        TimeSpan.FromMilliseconds(120),
+        TimeSpan.FromMilliseconds(260),
+        TimeSpan.FromMilliseconds(500)
+    ];
+    private static readonly Dictionary<string, DateTimeOffset> OpenCircuits = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly object CircuitLock = new();
+
     public static string AppendIncomingQuery(HttpContext httpContext, string urlWithoutQuery) =>
         urlWithoutQuery + (httpContext.Request.QueryString.HasValue ? httpContext.Request.QueryString.Value : string.Empty);
 
@@ -1325,39 +1344,153 @@ internal static class GatewayForwarder
 
     private static async Task<IResult> SendAsync(IHttpClientFactory factory, HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        var client = factory.CreateClient();
-        try
-        {
-            var response = await client.SendAsync(request, cancellationToken);
-            var payload = await response.Content.ReadAsStringAsync(cancellationToken);
-            return Results.Content(payload, "application/json", statusCode: (int)response.StatusCode);
-        }
-        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        var client = factory.CreateClient("gateway-forwarder");
+        var url = request.RequestUri?.ToString() ?? "unknown";
+        if (IsCircuitOpen(url))
         {
             return BuildGatewayErrorResult(
-                statusCode: StatusCodes.Status504GatewayTimeout,
-                errorCode: "gateway_timeout",
-                message: "Gateway timed out while waiting for downstream service.",
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                errorCode: "downstream_circuit_open",
+                message: "Downstream service is temporarily unavailable.",
                 correlationId: ResolveCorrelationId(request),
-                detail: ex.Message);
+                detail: "Circuit breaker is open.");
         }
-        catch (HttpRequestException ex)
+
+        HttpResponseMessage? response = null;
+        Exception? lastError = null;
+        for (var attempt = 0; attempt <= RetryDelays.Length; attempt++)
         {
-            return BuildGatewayErrorResult(
-                statusCode: StatusCodes.Status502BadGateway,
-                errorCode: "downstream_unavailable",
-                message: "Gateway failed to reach downstream service.",
-                correlationId: ResolveCorrelationId(request),
-                detail: ex.Message);
+            try
+            {
+                response?.Dispose();
+                response = await client.SendAsync(CloneRequest(request), cancellationToken);
+                if ((int)response.StatusCode >= 500 && attempt < RetryDelays.Length)
+                {
+                    await Task.Delay(RetryDelays[attempt], cancellationToken);
+                    continue;
+                }
+
+                if ((int)response.StatusCode >= 500)
+                {
+                    OpenCircuit(url);
+                }
+                else
+                {
+                    CloseCircuit(url);
+                }
+
+                var payload = await response.Content.ReadAsStringAsync(cancellationToken);
+                return Results.Content(payload, "application/json", statusCode: (int)response.StatusCode);
+            }
+            catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                lastError = ex;
+                if (attempt < RetryDelays.Length)
+                {
+                    await Task.Delay(RetryDelays[attempt], cancellationToken);
+                    continue;
+                }
+
+                OpenCircuit(url);
+                return BuildGatewayErrorResult(
+                    statusCode: StatusCodes.Status504GatewayTimeout,
+                    errorCode: "gateway_timeout",
+                    message: "Gateway timed out while waiting for downstream service.",
+                    correlationId: ResolveCorrelationId(request),
+                    detail: ex.Message);
+            }
+            catch (HttpRequestException ex)
+            {
+                lastError = ex;
+                if (attempt < RetryDelays.Length)
+                {
+                    await Task.Delay(RetryDelays[attempt], cancellationToken);
+                    continue;
+                }
+
+                OpenCircuit(url);
+                return BuildGatewayErrorResult(
+                    statusCode: StatusCodes.Status502BadGateway,
+                    errorCode: "downstream_unavailable",
+                    message: "Gateway failed to reach downstream service.",
+                    correlationId: ResolveCorrelationId(request),
+                    detail: ex.Message);
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                OpenCircuit(url);
+                return BuildGatewayErrorResult(
+                    statusCode: StatusCodes.Status502BadGateway,
+                    errorCode: "gateway_forwarding_failed",
+                    message: "Gateway forwarding failed.",
+                    correlationId: ResolveCorrelationId(request),
+                    detail: ex.Message);
+            }
         }
-        catch (Exception ex)
+
+        OpenCircuit(url);
+        return BuildGatewayErrorResult(
+            statusCode: StatusCodes.Status502BadGateway,
+            errorCode: "gateway_forwarding_failed",
+            message: "Gateway forwarding failed.",
+            correlationId: ResolveCorrelationId(request),
+            detail: lastError?.Message ?? "Unknown forwarding failure.");
+    }
+
+    private static HttpRequestMessage CloneRequest(HttpRequestMessage source)
+    {
+        var clone = new HttpRequestMessage(source.Method, source.RequestUri);
+        foreach (var header in source.Headers)
         {
-            return BuildGatewayErrorResult(
-                statusCode: StatusCodes.Status502BadGateway,
-                errorCode: "gateway_forwarding_failed",
-                message: "Gateway forwarding failed.",
-                correlationId: ResolveCorrelationId(request),
-                detail: ex.Message);
+            clone.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        }
+
+        if (source.Content is not null)
+        {
+            var payload = source.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+            clone.Content = new ByteArrayContent(payload);
+            foreach (var header in source.Content.Headers)
+            {
+                clone.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
+            }
+        }
+
+        return clone;
+    }
+
+    private static bool IsCircuitOpen(string key)
+    {
+        lock (CircuitLock)
+        {
+            if (!OpenCircuits.TryGetValue(key, out var until))
+            {
+                return false;
+            }
+
+            if (DateTimeOffset.UtcNow >= until)
+            {
+                OpenCircuits.Remove(key);
+                return false;
+            }
+
+            return true;
+        }
+    }
+
+    private static void OpenCircuit(string key)
+    {
+        lock (CircuitLock)
+        {
+            OpenCircuits[key] = DateTimeOffset.UtcNow.AddSeconds(10);
+        }
+    }
+
+    private static void CloseCircuit(string key)
+    {
+        lock (CircuitLock)
+        {
+            OpenCircuits.Remove(key);
         }
     }
 

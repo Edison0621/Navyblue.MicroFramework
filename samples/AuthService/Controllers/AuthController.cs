@@ -13,13 +13,24 @@ namespace AuthService.Controllers;
 public sealed class AuthController(
     IHttpClientFactory httpClientFactory,
     IRefreshTokenRepository refreshTokenRepository,
-    JwtOptions jwtOptions) : ControllerBase
+    JwtOptions jwtOptions,
+    ILogger<AuthController> logger) : ControllerBase
 {
+    private static readonly TimeSpan[] RetryDelays =
+    [
+        TimeSpan.FromMilliseconds(120),
+        TimeSpan.FromMilliseconds(280),
+        TimeSpan.FromMilliseconds(550)
+    ];
+
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request, CancellationToken cancellationToken)
     {
         var client = httpClientFactory.CreateClient();
-        var response = await client.PostAsJsonAsync("http://userservice:8080/api/users/internal/register", request, cancellationToken);
+        var response = await SendWithRetryAsync(
+            ct => client.PostAsJsonAsync("http://userservice:8080/api/users/internal/register", request, ct),
+            "register",
+            cancellationToken);
         if (response.StatusCode == HttpStatusCode.Conflict)
         {
             return Conflict(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Conflict, "Username or email already exists.")));
@@ -44,7 +55,10 @@ public sealed class AuthController(
     public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken cancellationToken)
     {
         var client = httpClientFactory.CreateClient();
-        var verifyResponse = await client.PostAsJsonAsync("http://userservice:8080/api/users/internal/verify", request, cancellationToken);
+        var verifyResponse = await SendWithRetryAsync(
+            ct => client.PostAsJsonAsync("http://userservice:8080/api/users/internal/verify", request, ct),
+            "verify",
+            cancellationToken);
         if (verifyResponse.StatusCode == HttpStatusCode.Unauthorized)
         {
             return Unauthorized(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Unauthorized, "Invalid account or password.")));
@@ -83,7 +97,10 @@ public sealed class AuthController(
         }
 
         var client = httpClientFactory.CreateClient();
-        var response = await client.GetAsync($"http://userservice:8080/api/users/internal/{userId}", cancellationToken);
+        var response = await SendWithRetryAsync(
+            ct => client.GetAsync($"http://userservice:8080/api/users/internal/{userId}", ct),
+            "load user by refresh token",
+            cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             return Unauthorized(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Unauthorized, "Failed to load user from refresh token.")));
@@ -125,5 +142,58 @@ public sealed class AuthController(
             username = User.Identity?.Name,
             roles = User.FindAll(ClaimTypes.Role).Select(x => x.Value).ToArray()
         }, null));
+    }
+
+    private async Task<HttpResponseMessage> SendWithRetryAsync(
+        Func<CancellationToken, Task<HttpResponseMessage>> operation,
+        string operationName,
+        CancellationToken cancellationToken)
+    {
+        HttpResponseMessage? lastResponse = null;
+        Exception? lastError = null;
+
+        for (var attempt = 0; attempt <= RetryDelays.Length; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                var response = await operation(cancellationToken);
+                if ((int)response.StatusCode < 500)
+                {
+                    return response;
+                }
+
+                lastResponse?.Dispose();
+                lastResponse = response;
+                logger.LogWarning(
+                    "Auth upstream call {OperationName} returned {StatusCode} at attempt {Attempt}",
+                    operationName,
+                    (int)response.StatusCode,
+                    attempt + 1);
+            }
+            catch (HttpRequestException ex)
+            {
+                lastError = ex;
+                logger.LogWarning(ex, "Auth upstream call {OperationName} failed at attempt {Attempt}", operationName, attempt + 1);
+            }
+            catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                lastError = ex;
+                logger.LogWarning(ex, "Auth upstream call {OperationName} timed out at attempt {Attempt}", operationName, attempt + 1);
+            }
+
+            if (attempt < RetryDelays.Length)
+            {
+                await Task.Delay(RetryDelays[attempt], cancellationToken);
+            }
+        }
+
+        if (lastResponse is not null)
+        {
+            return lastResponse;
+        }
+
+        throw new HttpRequestException($"Failed to call userservice for {operationName} after retries.", lastError);
     }
 }

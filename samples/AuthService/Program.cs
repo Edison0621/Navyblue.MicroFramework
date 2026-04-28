@@ -10,7 +10,13 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDaprClient();
+var daprGrpcEndpoint = builder.Configuration["Dapr:GrpcEndpoint"] ?? "http://localhost:50001";
+var daprHttpEndpoint = builder.Configuration["Dapr:HttpEndpoint"] ?? "http://localhost:3504";
+builder.Services.AddDaprClient(clientBuilder =>
+{
+    clientBuilder.UseGrpcEndpoint(daprGrpcEndpoint);
+    clientBuilder.UseHttpEndpoint(daprHttpEndpoint);
+});
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 builder.Services.AddHttpClient();

@@ -1,6 +1,7 @@
 services:
   consul-agent:
     image: hashicorp/consul:1.19
+    restart: unless-stopped
     command: "agent -retry-join=${CONSUL_SERVER_IP} -client=0.0.0.0"
     extra_hosts:
       - "${CONSUL_HOST}:${INFRA_HOST_IP}"
@@ -8,7 +9,8 @@ services:
       - "${OTEL_HOST}:${INFRA_HOST_IP}"
 
   registrator:
-    image: gliderlabs/registrator:latest
+    image: gliderlabs/registrator:v7
+    restart: unless-stopped
     command: "-internal consul://consul-agent:8500"
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
@@ -17,6 +19,7 @@ services:
 
   orderservice:
     image: orderservice:latest
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: samples/OrderService/Dockerfile
@@ -42,7 +45,8 @@ services:
       - consul-agent
 
   orderservice-dapr:
-    image: daprio/daprd:latest
+    image: daprio/daprd:1.15.14
+    restart: unless-stopped
     command:
       - ./daprd
       - --app-id

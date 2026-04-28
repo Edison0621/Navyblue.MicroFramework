@@ -22,13 +22,13 @@ export function ProductAuditPage() {
 
   useEffect(() => { void load() }, [])
 
-  const handleApprove = async (id: string, name: string) => {
+  const handleApprove = async (id: string, _name: string) => {
     await api.approveItem(id, 'approved by platform')
     recordAudit('catalog.item.approved', id)
     await load()
   }
 
-  const handleReject = async (id: string, name: string) => {
+  const handleReject = async (id: string, _name: string) => {
     await api.rejectItem(id, '违规词命中', 'reject by platform')
     recordAudit('catalog.item.rejected', id)
     await load()

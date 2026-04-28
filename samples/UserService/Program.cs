@@ -7,6 +7,7 @@ using Microsoft.IdentityModel.Tokens;
 using UserService.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddHostedService<DemoAdminSeedHostedService>();
 
 var daprGrpcEndpoint = builder.Configuration["Dapr:GrpcEndpoint"] ?? "http://localhost:50001";
 var daprHttpEndpoint = builder.Configuration["Dapr:HttpEndpoint"] ?? "http://localhost:3505";

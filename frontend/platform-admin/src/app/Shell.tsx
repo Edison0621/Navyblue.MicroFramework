@@ -45,7 +45,6 @@ export function Shell() {
   }
 
   const currentLabelKey = pathLabels[currentPath] || 'nav.dashboard'
-  const menuItem = menuItems.find(item => item.path === currentPath)
 
   return (
     <div className="app-layout">

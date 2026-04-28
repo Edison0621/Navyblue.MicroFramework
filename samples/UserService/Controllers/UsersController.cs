@@ -1,10 +1,11 @@
 using System.Security.Claims;
-using System.Security.Cryptography;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using UserService.Models;
 using UserService.Repositories;
+using UserService.Security;
 
 namespace UserService.Controllers;
 
@@ -20,7 +21,7 @@ public sealed class UsersController(IUserRepository userRepository) : Controller
     {
         var ids = await userRepository.GetIdsAsync(cancellationToken);
         var demoId = Guid.Parse(SeedUserId);
-        var demo = new UserRecord(demoId, "demo", "demo@example.com", Hash("demo123"), "active", ["user"], null);
+        var demo = new UserRecord(demoId, "demo", "demo@example.com", UserPasswordHasher.Hash("demo123"), "active", ["user"], null);
         await userRepository.SaveAsync(demo, cancellationToken);
         ids.Add(demo.Id);
         await userRepository.SaveIdsAsync(ids, cancellationToken);
@@ -32,7 +33,7 @@ public sealed class UsersController(IUserRepository userRepository) : Controller
     {
         var ids = await userRepository.GetIdsAsync(cancellationToken);
         var adminId = Guid.Parse(SeedAdminId);
-        var admin = new UserRecord(adminId, "admin", "admin@example.com", Hash("admin123"), "active", ["admin"], null);
+        var admin = new UserRecord(adminId, "admin", "admin@example.com", UserPasswordHasher.Hash("admin123"), "active", ["admin"], null);
         await userRepository.SaveAsync(admin, cancellationToken);
         ids.Add(admin.Id);
         await userRepository.SaveIdsAsync(ids, cancellationToken);
@@ -104,7 +105,7 @@ public sealed class UsersController(IUserRepository userRepository) : Controller
     public async Task<IActionResult> Upsert(Guid id, [FromBody] UpdateUserRequest request, CancellationToken cancellationToken)
     {
         var current = await userRepository.GetAsync(id, cancellationToken)
-            ?? new UserRecord(id, request.Username, request.Email, Hash("ChangeMe123!"), "active", ["user"], request.AvatarUrl);
+            ?? new UserRecord(id, request.Username, request.Email, UserPasswordHasher.Hash("ChangeMe123!"), "active", ["user"], request.AvatarUrl);
         var updated = current with { Username = request.Username, Email = request.Email, AvatarUrl = request.AvatarUrl };
         await userRepository.SaveAsync(updated, cancellationToken);
         var ids = await userRepository.GetIdsAsync(cancellationToken);
@@ -345,58 +346,76 @@ public sealed class UsersController(IUserRepository userRepository) : Controller
     [HttpPost("internal/register")]
     public async Task<IActionResult> RegisterInternal([FromBody] InternalRegisterRequest request, CancellationToken cancellationToken)
     {
-        var ids = await userRepository.GetIdsAsync(cancellationToken);
-        foreach (var userId in ids)
+        try
         {
-            var existing = await userRepository.GetAsync(userId, cancellationToken);
-            if (existing is null)
+            var ids = await userRepository.GetIdsAsync(cancellationToken);
+            foreach (var userId in ids)
             {
-                continue;
+                var existing = await userRepository.GetAsync(userId, cancellationToken);
+                if (existing is null)
+                {
+                    continue;
+                }
+
+                if (existing.Username.Equals(request.Username, StringComparison.OrdinalIgnoreCase)
+                    || existing.Email.Equals(request.Email, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Conflict(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Conflict, "Username or email already exists.")));
+                }
             }
 
-            if (existing.Username.Equals(request.Username, StringComparison.OrdinalIgnoreCase)
-                || existing.Email.Equals(request.Email, StringComparison.OrdinalIgnoreCase))
-            {
-                return Conflict(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Conflict, "Username or email already exists.")));
-            }
+            var user = new UserRecord(Guid.NewGuid(), request.Username, request.Email, UserPasswordHasher.Hash(request.Password), "active", ["user"], null);
+            await userRepository.SaveAsync(user, cancellationToken);
+            ids.Add(user.Id);
+            await userRepository.SaveIdsAsync(ids, cancellationToken);
+            return Ok(new ApiResponse<InternalAuthUser>(true, ToInternalAuthUser(user), null));
         }
-
-        var user = new UserRecord(Guid.NewGuid(), request.Username, request.Email, Hash(request.Password), "active", ["user"], null);
-        await userRepository.SaveAsync(user, cancellationToken);
-        ids.Add(user.Id);
-        await userRepository.SaveIdsAsync(ids, cancellationToken);
-        return Ok(new ApiResponse<InternalAuthUser>(true, ToInternalAuthUser(user), null));
+        catch (InvalidOperationException)
+        {
+            return StatusCode(
+                StatusCodes.Status503ServiceUnavailable,
+                new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.UpstreamError, "User data store is temporarily unavailable.")));
+        }
     }
 
     [HttpPost("internal/verify")]
     public async Task<IActionResult> VerifyInternal([FromBody] InternalVerifyRequest request, CancellationToken cancellationToken)
     {
-        var ids = await userRepository.GetIdsAsync(cancellationToken);
-        foreach (var userId in ids)
+        try
         {
-            var existing = await userRepository.GetAsync(userId, cancellationToken);
-            if (existing is null)
+            var ids = await userRepository.GetIdsAsync(cancellationToken);
+            foreach (var userId in ids)
             {
-                continue;
+                var existing = await userRepository.GetAsync(userId, cancellationToken);
+                if (existing is null)
+                {
+                    continue;
+                }
+
+                var accountMatched =
+                    existing.Username.Equals(request.Account, StringComparison.OrdinalIgnoreCase)
+                    || existing.Email.Equals(request.Account, StringComparison.OrdinalIgnoreCase);
+                if (!accountMatched)
+                {
+                    continue;
+                }
+
+                if (!UserPasswordHasher.Verify(request.Password, existing.PasswordHash))
+                {
+                    return Unauthorized(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Unauthorized, "Invalid account or password.")));
+                }
+
+                return Ok(new ApiResponse<InternalAuthUser>(true, ToInternalAuthUser(existing), null));
             }
 
-            var accountMatched =
-                existing.Username.Equals(request.Account, StringComparison.OrdinalIgnoreCase)
-                || existing.Email.Equals(request.Account, StringComparison.OrdinalIgnoreCase);
-            if (!accountMatched)
-            {
-                continue;
-            }
-
-            if (!Verify(request.Password, existing.PasswordHash))
-            {
-                return Unauthorized(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Unauthorized, "Invalid account or password.")));
-            }
-
-            return Ok(new ApiResponse<InternalAuthUser>(true, ToInternalAuthUser(existing), null));
+            return Unauthorized(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Unauthorized, "Invalid account or password.")));
         }
-
-        return Unauthorized(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.Unauthorized, "Invalid account or password.")));
+        catch (InvalidOperationException)
+        {
+            return StatusCode(
+                StatusCodes.Status503ServiceUnavailable,
+                new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.UpstreamError, "User data store is temporarily unavailable.")));
+        }
     }
 
     [HttpGet("internal/{id:guid}")]
@@ -406,27 +425,6 @@ public sealed class UsersController(IUserRepository userRepository) : Controller
         return user is null
             ? NotFound(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.NotFound, "User not found.")))
             : Ok(new ApiResponse<InternalAuthUser>(true, ToInternalAuthUser(user), null));
-    }
-
-    private static string Hash(string password)
-    {
-        var salt = RandomNumberGenerator.GetBytes(16);
-        var hash = Rfc2898DeriveBytes.Pbkdf2(password, salt, 100_000, HashAlgorithmName.SHA256, 32);
-        return $"{Convert.ToBase64String(salt)}:{Convert.ToBase64String(hash)}";
-    }
-
-    private static bool Verify(string password, string storedHash)
-    {
-        var parts = storedHash.Split(':');
-        if (parts.Length != 2)
-        {
-            return false;
-        }
-
-        var salt = Convert.FromBase64String(parts[0]);
-        var expected = Convert.FromBase64String(parts[1]);
-        var actual = Rfc2898DeriveBytes.Pbkdf2(password, salt, 100_000, HashAlgorithmName.SHA256, 32);
-        return CryptographicOperations.FixedTimeEquals(actual, expected);
     }
 
     private bool TryGetUserId(out Guid userId)

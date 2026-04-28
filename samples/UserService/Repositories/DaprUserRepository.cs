@@ -17,10 +17,11 @@ public sealed class DaprUserRepository(DaprClient daprClient, ILogger<DaprUserRe
 
     public async Task<HashSet<Guid>> GetIdsAsync(CancellationToken cancellationToken)
     {
-        return await ExecuteWithRetryAsync(
+        var ids = await ExecuteWithRetryAsync(
             ct => daprClient.GetStateAsync<HashSet<Guid>>(StateStoreName, UserIndexStateKey, cancellationToken: ct),
             "GetIds",
             cancellationToken);
+        return ids ?? [];
     }
 
     public Task SaveIdsAsync(HashSet<Guid> ids, CancellationToken cancellationToken)

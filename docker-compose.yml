@@ -35,11 +35,13 @@ services:
     depends_on:
       jaeger:
         condition: service_healthy
+    # Distroless image: no wget/curl/sh. Validate proves config loads; process liveness is the container PID.
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:13133/"]
-      interval: 10s
-      timeout: 4s
-      retries: 10
+      test: ["CMD", "/otelcol-contrib", "validate", "--config=/etc/otelcol/config.yaml"]
+      interval: 15s
+      timeout: 15s
+      retries: 5
+      start_period: 20s
 
   orderservice:
     image: orderservice:latest
@@ -81,6 +83,8 @@ services:
       - "8080"
       - --dapr-http-port
       - "3501"
+      - --dapr-grpc-port
+      - "50001"
       - --resources-path
       - /components
     network_mode: service:orderservice
@@ -115,6 +119,8 @@ services:
       - "8080"
       - --dapr-http-port
       - "3502"
+      - --dapr-grpc-port
+      - "50001"
       - --resources-path
       - /components
     network_mode: service:productservice
@@ -149,6 +155,8 @@ services:
       - "8080"
       - --dapr-http-port
       - "3503"
+      - --dapr-grpc-port
+      - "50001"
       - --resources-path
       - /components
     network_mode: service:productservice-canary
@@ -190,6 +198,8 @@ services:
       - "8080"
       - --dapr-http-port
       - "3504"
+      - --dapr-grpc-port
+      - "50001"
       - --resources-path
       - /components
     network_mode: service:authservice
@@ -230,6 +240,8 @@ services:
       - "8080"
       - --dapr-http-port
       - "3505"
+      - --dapr-grpc-port
+      - "50001"
       - --resources-path
       - /components
     network_mode: service:userservice
@@ -274,6 +286,8 @@ services:
       - "8080"
       - --dapr-http-port
       - "3506"
+      - --dapr-grpc-port
+      - "50001"
       - --resources-path
       - /components
     network_mode: service:gatewayservice
@@ -308,6 +322,8 @@ services:
       - "8080"
       - --dapr-http-port
       - "3507"
+      - --dapr-grpc-port
+      - "50001"
       - --resources-path
       - /components
     network_mode: service:auditservice
@@ -345,6 +361,8 @@ services:
       - "8080"
       - --dapr-http-port
       - "3508"
+      - --dapr-grpc-port
+      - "50001"
       - --resources-path
       - /components
     network_mode: service:catalogservice
@@ -382,6 +400,8 @@ services:
       - "8080"
       - --dapr-http-port
       - "3509"
+      - --dapr-grpc-port
+      - "50001"
       - --resources-path
       - /components
     network_mode: service:inventoryservice
@@ -416,6 +436,8 @@ services:
       - "8080"
       - --dapr-http-port
       - "3510"
+      - --dapr-grpc-port
+      - "50001"
       - --resources-path
       - /components
     network_mode: service:notificationservice
@@ -456,6 +478,8 @@ services:
       - "8080"
       - --dapr-http-port
       - "3511"
+      - --dapr-grpc-port
+      - "50001"
       - --resources-path
       - /components
     network_mode: service:jobservice
@@ -493,6 +517,8 @@ services:
       - "8080"
       - --dapr-http-port
       - "3512"
+      - --dapr-grpc-port
+      - "50001"
       - --resources-path
       - /components
     network_mode: service:promotionservice
@@ -562,6 +588,8 @@ services:
       - "8080"
       - --dapr-http-port
       - "3500"
+      - --dapr-grpc-port
+      - "50001"
       - --resources-path
       - /components
     network_mode: service:opsportal

@@ -44,7 +44,8 @@ services:
       jaeger:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:13133/"]
-      interval: 10s
-      timeout: 4s
-      retries: 10
+      test: ["CMD", "/otelcol-contrib", "validate", "--config=/etc/otelcol/config.yaml"]
+      interval: 15s
+      timeout: 15s
+      retries: 5
+      start_period: 20s

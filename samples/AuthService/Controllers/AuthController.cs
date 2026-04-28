@@ -38,7 +38,7 @@ public sealed class AuthController(
 
         if (!response.IsSuccessStatusCode)
         {
-            return StatusCode((int)response.StatusCode, new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.UpstreamError, "User service returned an unexpected status.")));
+            return MapUpstreamUserServiceFailure(response);
         }
 
         var wrapped = await response.Content.ReadFromJsonAsync<ApiResponse<AuthUserResponse>>(cancellationToken: cancellationToken);
@@ -66,7 +66,7 @@ public sealed class AuthController(
 
         if (!verifyResponse.IsSuccessStatusCode)
         {
-            return StatusCode((int)verifyResponse.StatusCode, new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.UpstreamError, "User service returned an unexpected status.")));
+            return MapUpstreamUserServiceFailure(verifyResponse);
         }
 
         var wrapped = await verifyResponse.Content.ReadFromJsonAsync<ApiResponse<AuthUserResponse>>(cancellationToken: cancellationToken);
@@ -195,5 +195,28 @@ public sealed class AuthController(
         }
 
         throw new HttpRequestException($"Failed to call userservice for {operationName} after retries.", lastError);
+    }
+
+    private static IActionResult MapUpstreamUserServiceFailure(HttpResponseMessage response)
+    {
+        var code = (int)response.StatusCode;
+        if (code >= 500)
+        {
+            return new ObjectResult(new ApiResponse<object>(
+                false,
+                null,
+                new ApiError(ApiErrorCodes.UpstreamError, "User service is temporarily unavailable. Please try again in a moment.")))
+            {
+                StatusCode = StatusCodes.Status503ServiceUnavailable
+            };
+        }
+
+        return new ObjectResult(new ApiResponse<object>(
+            false,
+            null,
+            new ApiError(ApiErrorCodes.UpstreamError, "User service returned an unexpected status.")))
+        {
+            StatusCode = code
+        };
     }
 }

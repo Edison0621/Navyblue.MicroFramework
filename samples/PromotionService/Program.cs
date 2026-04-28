@@ -4,7 +4,13 @@ using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDaprClient();
+var daprGrpcEndpoint = builder.Configuration["Dapr:GrpcEndpoint"] ?? "http://localhost:50001";
+var daprHttpEndpoint = builder.Configuration["Dapr:HttpEndpoint"] ?? "http://localhost:3512";
+builder.Services.AddDaprClient(clientBuilder =>
+{
+    clientBuilder.UseGrpcEndpoint(daprGrpcEndpoint);
+    clientBuilder.UseHttpEndpoint(daprHttpEndpoint);
+});
 builder.Services.AddScoped<IPromotionRepository, DaprPromotionRepository>();
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
@@ -16,6 +22,31 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
+
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (InvalidOperationException ex) when (ex.Message.Contains("state operation", StringComparison.OrdinalIgnoreCase))
+    {
+        var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("PromotionServiceUnavailable");
+        logger.LogWarning(ex, "Promotion service dependency unavailable for {Path}", context.Request.Path);
+        if (!context.Response.HasStarted)
+        {
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsJsonAsync(new
+            {
+                success = false,
+                data = (object?)null,
+                error = new { code = "dependency_unavailable", message = "Promotion dependency is temporarily unavailable." },
+                traceId = context.TraceIdentifier
+            });
+        }
+    }
+});
 
 app.MapGet("/", () => Results.Ok(new { service = "PromotionService", status = "ok" }));
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));

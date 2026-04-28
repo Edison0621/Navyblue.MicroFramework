@@ -1,0 +1,36 @@
+{
+  "title": "Runtime Health",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "OTEL Collector Up",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "up{job=\"otel-collector\"}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Gateway Request Rate",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(http_server_request_duration_seconds_count{service_name=\"GatewayService\"}[1m]))", "refId": "A" }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Recent Error Logs",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        { "expr": "{level=\"error\"}", "refId": "A" }
+      ]
+    }
+  ]
+}

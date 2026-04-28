@@ -1,0 +1,108 @@
+// 中文
+export const zh_CN = {
+  nav: {
+    dashboard: '运营总览',
+    products: '商品管理',
+    orders: '订单售后',
+    marketing: '店铺营销',
+    settings: '店铺设置',
+    audit: '操作记录',
+    logout: '退出',
+  },
+  dashboard: {
+    title: '运营总览',
+    todayOrders: '今日订单',
+    todaySales: '今日销售额',
+    pendingOrders: '待处理订单',
+    totalProducts: '商品总数',
+    quickActions: '快捷操作',
+    recentOrders: '最近订单',
+    comparedYesterday: '较昨日',
+  },
+  login: {
+    title: '商家管理后台',
+    subtitle: 'Merchant Admin Portal',
+    accountLabel: '账号',
+    accountPlaceholder: '请输入账号',
+    passwordLabel: '密码',
+    passwordPlaceholder: '请输入密码',
+    loginBtn: '登录并进入',
+    loggingIn: '登录中...',
+    defaultAccount: '默认账号：demo / demo123',
+  },
+  common: {
+    loading: '加载中...',
+    save: '保存',
+    cancel: '取消',
+    confirm: '确认',
+    delete: '删除',
+    edit: '编辑',
+    search: '搜索',
+    status: '状态',
+    actions: '操作',
+    success: '成功',
+    error: '错误',
+  },
+  settings: {
+    title: '店铺设置',
+    language: '语言',
+    chinese: '中文',
+    english: 'English',
+  },
+}
+
+// English
+export const en_US = {
+  nav: {
+    dashboard: 'Dashboard',
+    products: 'Products',
+    orders: 'Orders',
+    marketing: 'Marketing',
+    settings: 'Settings',
+    audit: 'Audit Log',
+    logout: 'Logout',
+  },
+  dashboard: {
+    title: 'Dashboard',
+    todayOrders: 'Today Orders',
+    todaySales: 'Today Sales',
+    pendingOrders: 'Pending Orders',
+    totalProducts: 'Total Products',
+    quickActions: 'Quick Actions',
+    recentOrders: 'Recent Orders',
+    comparedYesterday: 'vs Yesterday',
+  },
+  login: {
+    title: 'Merchant Admin',
+    subtitle: 'Merchant Admin Portal',
+    accountLabel: 'Account',
+    accountPlaceholder: 'Enter account',
+    passwordLabel: 'Password',
+    passwordPlaceholder: 'Enter password',
+    loginBtn: 'Login',
+    loggingIn: 'Logging in...',
+    defaultAccount: 'Default: demo / demo123',
+  },
+  common: {
+    loading: 'Loading...',
+    save: 'Save',
+    cancel: 'Cancel',
+    confirm: 'Confirm',
+    delete: 'Delete',
+    edit: 'Edit',
+    search: 'Search',
+    status: 'Status',
+    actions: 'Actions',
+    success: 'Success',
+    error: 'Error',
+  },
+  settings: {
+    title: 'Shop Settings',
+    language: 'Language',
+    chinese: '中文',
+    english: 'English',
+  },
+}
+
+export type Language = 'zh-CN' | 'en-US'
+export type TranslationKeys = typeof zh_CN

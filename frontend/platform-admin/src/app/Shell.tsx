@@ -1,47 +1,50 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { clearToken } from '../shared/auth'
+import { useI18n } from '../shared/i18n/I18nContext'
+import { LanguageSwitcher } from '../shared/ui/LanguageSwitcher'
 
 const menuItems = [
-  { path: '/', icon: '📊', label: '运营总览' },
-  { path: '/merchant', icon: '🏪', label: '商家管理' },
-  { path: '/catalog', icon: '📂', label: '类目属性' },
-  { path: '/product-audit', icon: '✅', label: '商品审核' },
-  { path: '/order-governance', icon: '🛒', label: '订单仲裁' },
-  { path: '/user-governance', icon: '👥', label: '用户治理' },
-  { path: '/marketing', icon: '🎯', label: '营销活动' },
-  { path: '/finance', icon: '💰', label: '财务结算' },
-  { path: '/tickets', icon: '🎫', label: '客服工单' },
-  { path: '/risk', icon: '🛡️', label: '风控安全' },
-  { path: '/system', icon: '⚙️', label: '系统设置' },
-  { path: '/audit', icon: '📝', label: '操作审计' },
+  { path: '/', icon: '📊', labelKey: 'nav.dashboard' },
+  { path: '/merchant', icon: '🏪', labelKey: 'nav.merchant' },
+  { path: '/catalog', icon: '📂', labelKey: 'nav.catalog' },
+  { path: '/product-audit', icon: '✅', labelKey: 'nav.productAudit' },
+  { path: '/order-governance', icon: '🛒', labelKey: 'nav.orderGovernance' },
+  { path: '/user-governance', icon: '👥', labelKey: 'nav.userGovernance' },
+  { path: '/marketing', icon: '🎯', labelKey: 'nav.marketing' },
+  { path: '/finance', icon: '💰', labelKey: 'nav.finance' },
+  { path: '/tickets', icon: '🎫', labelKey: 'nav.tickets' },
+  { path: '/risk', icon: '🛡️', labelKey: 'nav.risk' },
+  { path: '/system', icon: '⚙️', labelKey: 'nav.system' },
+  { path: '/audit', icon: '📝', labelKey: 'nav.audit' },
 ]
 
 const pathLabels: Record<string, string> = {
-  '/': '运营总览',
-  '/merchant': '商家管理',
-  '/catalog': '类目属性',
-  '/product-audit': '商品审核',
-  '/order-governance': '订单仲裁',
-  '/user-governance': '用户治理',
-  '/marketing': '营销活动',
-  '/finance': '财务结算',
-  '/tickets': '客服工单',
-  '/risk': '风控安全',
-  '/system': '系统设置',
-  '/audit': '操作审计',
+  '/': 'nav.dashboard',
+  '/merchant': 'nav.merchant',
+  '/catalog': 'nav.catalog',
+  '/product-audit': 'nav.productAudit',
+  '/order-governance': 'nav.orderGovernance',
+  '/user-governance': 'nav.userGovernance',
+  '/marketing': 'nav.marketing',
+  '/finance': 'nav.finance',
+  '/tickets': 'nav.tickets',
+  '/risk': 'nav.risk',
+  '/system': 'nav.system',
+  '/audit': 'nav.audit',
 }
 
 export function Shell() {
   const navigate = useNavigate()
   const location = useLocation()
   const currentPath = location.pathname
+  const { t } = useI18n()
 
   const handleLogout = () => {
     clearToken()
     navigate('/login')
   }
 
-  const currentLabel = pathLabels[currentPath] || '平台管理'
+  const currentLabelKey = pathLabels[currentPath] || 'nav.dashboard'
   const menuItem = menuItems.find(item => item.path === currentPath)
 
   return (
@@ -51,7 +54,7 @@ export function Shell() {
         <div className="sidebar-header">
           <Link to="/" className="sidebar-logo">
             <div className="sidebar-logo-icon">P</div>
-            <span className="sidebar-logo-text">平台管理后台</span>
+            <span className="sidebar-logo-text">{t('login.title')}</span>
           </Link>
         </div>
         <nav className="sidebar-menu">
@@ -62,7 +65,7 @@ export function Shell() {
               className={`menu-item ${currentPath === item.path ? 'active' : ''}`}
             >
               <span className="menu-icon">{item.icon}</span>
-              <span className="menu-text">{item.label}</span>
+              <span className="menu-text">{t(item.labelKey)}</span>
             </Link>
           ))}
         </nav>
@@ -73,14 +76,15 @@ export function Shell() {
         {/* 顶部导航 */}
         <header className="top-header">
           <div className="breadcrumb">
-            <span>平台管理</span>
+            <span>{t('nav.platform') || '平台管理'}</span>
             <span className="breadcrumb-separator">/</span>
-            <span className="breadcrumb-current">{currentLabel}</span>
+            <span className="breadcrumb-current">{t(currentLabelKey)}</span>
           </div>
           <div className="header-actions">
-            <div className="user-info" onClick={handleLogout} title="点击退出登录">
+            <LanguageSwitcher />
+            <div className="user-info" onClick={handleLogout} title={t('nav.logout')}>
               <div className="user-avatar">A</div>
-              <span className="user-name">管理员</span>
+              <span className="user-name">{t('nav.admin') || '管理员'}</span>
             </div>
           </div>
         </header>

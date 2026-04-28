@@ -19,7 +19,16 @@ public sealed class PromotionsController : ControllerBase
     public async Task<IActionResult> GetPromotions([FromQuery] int page, [FromQuery] int pageSize, CancellationToken cancellationToken)
     {
         var query = new PageQuery(page, pageSize);
-        var campaigns = await _promotionRepository.GetAllAsync(cancellationToken);
+        List<PromotionCampaign> campaigns;
+        try
+        {
+            campaigns = await _promotionRepository.GetAllAsync(cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            campaigns = [];
+        }
+
         var ordered = campaigns.OrderByDescending(x => x.CreatedAt).ToList();
         var total = ordered.Count;
         var items = ordered.Skip((query.SafePage - 1) * query.SafePageSize).Take(query.SafePageSize).ToList();
@@ -30,7 +39,16 @@ public sealed class PromotionsController : ControllerBase
     [HttpGet("{code}")]
     public async Task<IActionResult> GetPromotionByCode(string code, CancellationToken cancellationToken)
     {
-        var campaigns = await _promotionRepository.GetAllAsync(cancellationToken);
+        List<PromotionCampaign> campaigns;
+        try
+        {
+            campaigns = await _promotionRepository.GetAllAsync(cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            campaigns = [];
+        }
+
         var matched = campaigns.FirstOrDefault(x => x.Code.Equals(code, StringComparison.OrdinalIgnoreCase));
         return matched is null
             ? NotFound(new ApiResponse<object>(false, null, new ApiError(ApiErrorCodes.NotFound, "Promotion not found.")))

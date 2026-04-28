@@ -1,29 +1,32 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { clearToken, getShopId } from '../shared/auth'
 import { useAuth } from './AuthContext'
+import { useI18n } from '../shared/i18n/I18nContext'
+import { LanguageSwitcher } from '../shared/ui/LanguageSwitcher'
 
 const menuItems = [
-  { path: '/', icon: '📊', label: '运营总览' },
-  { path: '/products', icon: '📦', label: '商品管理' },
-  { path: '/orders', icon: '🛒', label: '订单售后' },
-  { path: '/marketing', icon: '🎯', label: '店铺营销' },
-  { path: '/shop-settings', icon: '⚙️', label: '店铺设置' },
-  { path: '/audit', icon: '📝', label: '操作记录' },
+  { path: '/', icon: '📊', labelKey: 'nav.dashboard' },
+  { path: '/products', icon: '📦', labelKey: 'nav.products' },
+  { path: '/orders', icon: '🛒', labelKey: 'nav.orders' },
+  { path: '/marketing', icon: '🎯', labelKey: 'nav.marketing' },
+  { path: '/shop-settings', icon: '⚙️', labelKey: 'nav.settings' },
+  { path: '/audit', icon: '📝', labelKey: 'nav.audit' },
 ]
 
 const breadcrumbMap: Record<string, string> = {
-  '/': '运营总览',
-  '/products': '商品管理',
-  '/orders': '订单售后',
-  '/marketing': '店铺营销',
-  '/shop-settings': '店铺设置',
-  '/audit': '操作记录',
+  '/': 'nav.dashboard',
+  '/products': 'nav.products',
+  '/orders': 'nav.orders',
+  '/marketing': 'nav.marketing',
+  '/shop-settings': 'nav.settings',
+  '/audit': 'nav.audit',
 }
 
 export function Shell() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user } = useAuth()
+  const { t } = useI18n()
   
   const handleLogout = () => {
     clearToken()
@@ -31,7 +34,7 @@ export function Shell() {
   }
 
   const currentPath = location.pathname
-  const breadcrumb = breadcrumbMap[currentPath] || '总览'
+  const breadcrumbKey = breadcrumbMap[currentPath] || 'nav.dashboard'
 
   return (
     <div className="app-layout">
@@ -40,7 +43,7 @@ export function Shell() {
         <div className="sidebar-header">
           <Link to="/" className="sidebar-logo">
             <div className="sidebar-logo-icon">M</div>
-            <span className="sidebar-logo-text">商家管理后台</span>
+            <span className="sidebar-logo-text">{t('login.title')}</span>
           </Link>
         </div>
         
@@ -52,7 +55,7 @@ export function Shell() {
               className={`menu-item ${currentPath === item.path ? 'active' : ''}`}
             >
               <span className="menu-icon">{item.icon}</span>
-              <span className="menu-text">{item.label}</span>
+              <span className="menu-text">{t(item.labelKey)}</span>
             </Link>
           ))}
         </nav>
@@ -63,26 +66,27 @@ export function Shell() {
         {/* 顶部导航 */}
         <header className="top-header">
           <div className="header-left">
-            <h1 className="header-title">{breadcrumb}</h1>
+            <h1 className="header-title">{t(breadcrumbKey)}</h1>
             <div className="header-breadcrumb">
-              <span>首页</span>
+              <span>{t('nav.home') || '首页'}</span>
               <span className="breadcrumb-separator">/</span>
-              <span>{breadcrumb}</span>
+              <span>{t(breadcrumbKey)}</span>
             </div>
           </div>
           
           <div className="header-right">
+            <LanguageSwitcher />
             <div className="header-user">
               <div className="user-avatar">
                 {user?.username?.charAt(0).toUpperCase() || 'A'}
               </div>
               <div className="user-info">
                 <span className="user-name">{user?.username || 'Admin'}</span>
-                <span className="user-role">店铺: {getShopId()}</span>
+                <span className="user-role">{t('nav.shop') || '店铺'}: {getShopId()}</span>
               </div>
             </div>
             <button type="button" className="btn btn-ghost" onClick={handleLogout}>
-              退出登录
+              {t('nav.logout')}
             </button>
           </div>
         </header>

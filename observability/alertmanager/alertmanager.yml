@@ -1,0 +1,23 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: "default-log"
+  group_by: ["alertname", "severity"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 2h
+  routes:
+    - receiver: "critical-log"
+      matchers:
+        - severity="critical"
+
+receivers:
+  - name: "default-log"
+    webhook_configs:
+      - url: "http://host.docker.internal:18080/alerts/default"
+        send_resolved: true
+  - name: "critical-log"
+    webhook_configs:
+      - url: "http://host.docker.internal:18080/alerts/critical"
+        send_resolved: true

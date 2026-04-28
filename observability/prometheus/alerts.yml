@@ -1,0 +1,29 @@
+groups:
+  - name: service-availability
+    rules:
+      - alert: GatewayHigh5xxRate
+        expr: sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~"5..",service_name="GatewayService"}[5m])) > 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Gateway 5xx rate is high"
+          description: "GatewayService has sustained 5xx responses in the last 5 minutes."
+
+      - alert: AuthLatencyHighP95
+        expr: histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket{service_name="AuthService"}[5m])) by (le)) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Auth latency p95 too high"
+          description: "AuthService p95 latency is above SLO threshold."
+
+      - alert: OTelCollectorDown
+        expr: up{job="otel-collector"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "OTEL collector down"
+          description: "OpenTelemetry collector is unreachable."

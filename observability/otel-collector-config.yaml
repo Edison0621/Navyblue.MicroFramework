@@ -5,6 +5,10 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
+  memory_limiter:
+    check_interval: 2s
+    limit_mib: 512
+    spike_limit_mib: 128
   batch:
 
 exporters:
@@ -12,16 +16,33 @@ exporters:
     endpoint: jaeger:4317
     tls:
       insecure: true
+  prometheus:
+    endpoint: 0.0.0.0:9464
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+  otlphttp:
+    endpoint: http://jaeger:4318
+    tls:
+      insecure: true
   logging:
     loglevel: info
 
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
 service:
+  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
-      exporters: [otlp, logging]
+      processors: [memory_limiter, batch]
+      exporters: [otlp, otlphttp, logging]
     metrics:
       receivers: [otlp]
-      processors: [batch]
-      exporters: [logging]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus, logging]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [loki, logging]

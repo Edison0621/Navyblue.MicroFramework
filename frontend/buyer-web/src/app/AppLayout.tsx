@@ -1,8 +1,11 @@
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from './AuthContext'
+import { useI18n } from '../shared/i18n/I18nContext'
+import { LanguageSwitcher } from '../shared/ui/LanguageSwitcher'
 
 export function AppLayout() {
   const { signOut, isAuthed } = useAuth()
+  const { t } = useI18n()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -10,9 +13,10 @@ export function AppLayout() {
     <div className="app-shell">
       <div className="top-strip">
         <div className="top-strip-inner">
-          <span>欢迎来到 Buyer Mall，品质好货天天低价</span>
-          <div className="row">
-            {isAuthed ? <span>已登录</span> : <span>游客访问中</span>}
+          <span>{t('home.welcome') || '欢迎来到 Buyer Mall，品质好货天天低价'}</span>
+          <div className="row" style={{ gap: '12px' }}>
+            <LanguageSwitcher />
+            {isAuthed ? <span>{t('nav.loggedin') || '已登录'}</span> : <span>{t('nav.guest') || '游客访问中'}</span>}
             {isAuthed ? (
               <button
                 type="button"
@@ -21,11 +25,11 @@ export function AppLayout() {
                   navigate('/')
                 }}
               >
-                退出
+                {t('nav.logout')}
               </button>
             ) : (
               <Link className="btn" to="/login">
-                登录
+                {t('nav.login')}
               </Link>
             )}
           </div>
